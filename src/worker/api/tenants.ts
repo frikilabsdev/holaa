@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "@/worker/api/auth";
 import type { Tenant, BusinessConfig } from "@/shared/types";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Get all tenants for the authenticated user
 app.get("/", authMiddleware, async (c) => {

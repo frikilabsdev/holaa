@@ -2,11 +2,12 @@
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
-    "types": ["vite/client"],
+    "types": ["vite/client", "@cloudflare/workers-types"],
+    "lib": ["esnext"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/worker"]
+  "include": ["src/worker", "src/worker/**/*"]
 }

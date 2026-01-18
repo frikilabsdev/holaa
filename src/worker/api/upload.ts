@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { authMiddleware } from "@/worker/api/auth";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Upload image to R2
 app.post("/image", authMiddleware, async (c) => {
@@ -11,11 +11,13 @@ app.post("/image", authMiddleware, async (c) => {
   }
 
   const formData = await c.req.formData();
-  const file = formData.get("file") as File;
-
-  if (!file) {
+  const fileEntry = formData.get("file");
+  
+  if (!fileEntry || typeof fileEntry === "string") {
     return c.json({ error: "Archivo no proporcionado" }, 400);
   }
+  
+  const file = fileEntry as File;
 
   // Validate file type
   const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -83,6 +85,9 @@ app.post("/image", authMiddleware, async (c) => {
 // Serve files from R2 (public endpoint)
 app.get("/files/:path(*)", async (c) => {
   const filePath = c.req.param("path");
+  if (!filePath) {
+    return c.json({ error: "Ruta de archivo no proporcionada" }, 400);
+  }
   console.log(`[Upload API] GET /files/${filePath} - Intentando obtener archivo`);
 
   try {
@@ -92,13 +97,15 @@ app.get("/files/:path(*)", async (c) => {
       console.error(`[Upload API] Archivo no encontrado en R2: ${filePath}`);
       // Try to list objects to debug
       try {
-        const prefix = filePath.split("/")[0] + "/";
-        const listResult = await c.env.R2_BUCKET.list({ prefix });
-        console.log(`[Upload API] Archivos en R2 con prefijo "${prefix}":`, listResult.objects?.map(o => o.key) || []);
+        if (filePath) {
+          const prefix = filePath.split("/")[0] + "/";
+          const listResult = await c.env.R2_BUCKET.list({ prefix });
+          console.log(`[Upload API] Archivos en R2 con prefijo "${prefix}":`, listResult.objects?.map(o => o.key) || []);
+        }
       } catch (listError) {
         console.error(`[Upload API] Error al listar objetos:`, listError);
       }
-      return c.json({ error: "Archivo no encontrado", path: filePath }, 404);
+      return c.json({ error: "Archivo no encontrado", path: filePath || "unknown" }, 404);
     }
 
     console.log(`[Upload API] Archivo encontrado: ${filePath}, tamaño: ${object.size}`);
@@ -107,9 +114,9 @@ app.get("/files/:path(*)", async (c) => {
     object.writeHttpMetadata(headers);
     headers.set("etag", object.httpEtag);
     
-    // Ensure Content-Type is set correctly for images
-    if (!headers.get("Content-Type")) {
-      const ext = filePath.split(".").pop()?.toLowerCase();
+      // Ensure Content-Type is set correctly for images
+      if (!headers.get("Content-Type") && filePath) {
+        const ext = filePath.split(".").pop()?.toLowerCase();
       const contentTypeMap: Record<string, string> = {
         jpg: "image/jpeg",
         jpeg: "image/jpeg",

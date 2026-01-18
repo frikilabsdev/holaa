@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { hashPassword, verifyPassword, generateSessionToken, type User } from "@/worker/utils/auth";
+import { hashPassword, verifyPassword, generateSessionToken } from "@/worker/utils/auth";
 import { checkRateLimit, getClientIP } from "@/worker/utils/rate-limit";
 import { logger } from "@/worker/utils/logger";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 const SESSION_TOKEN_COOKIE_NAME = "session_token";
 const SESSION_TTL = 60 * 24 * 60 * 60; // 60 days in seconds

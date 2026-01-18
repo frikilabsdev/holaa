@@ -3,7 +3,7 @@ import type { Tenant, BusinessConfig, Service, PaymentMethod, ServiceImage } fro
 import { generateICS } from "@/worker/utils/ics";
 import { checkRateLimit, getClientIP } from "@/worker/utils/rate-limit";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Helper functions
 function timeToMinutes(time: string): number {
@@ -581,6 +581,7 @@ app.get("/appointments/:id/ics", async (c) => {
       appointment_date: string;
       appointment_time: string;
       customer_name: string;
+      customer_phone: string;
       customer_email: string | null;
       service_title: string;
       duration_minutes: number | null;

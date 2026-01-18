@@ -41,8 +41,8 @@ class Logger {
     // In production, Cloudflare Workers automatically sets NODE_ENV
     // For local development, check URL
     this.isDevelopment = typeof globalThis !== "undefined" && 
-      (globalThis.location?.hostname === "localhost" || 
-       globalThis.location?.hostname === "127.0.0.1");
+      ((globalThis as any).location?.hostname === "localhost" || 
+       (globalThis as any).location?.hostname === "127.0.0.1");
   }
 
   /**

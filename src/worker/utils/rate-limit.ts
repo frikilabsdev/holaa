@@ -36,12 +36,12 @@ export async function checkRateLimit(
 
   try {
     // Get existing entries
-    const existingData = await kv.get<{ timestamps: number[] }>(key, "json");
+    const existingData = await kv.get(key, "json") as { timestamps: number[] } | null;
     
     const timestamps = existingData?.timestamps || [];
     
     // Filter timestamps within the current window
-    const validTimestamps = timestamps.filter((ts) => ts > windowStart);
+    const validTimestamps = timestamps.filter((ts: number) => ts > windowStart);
     
     // Check if limit exceeded
     if (validTimestamps.length >= options.limit) {

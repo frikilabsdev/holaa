@@ -3,7 +3,7 @@ import { authMiddleware } from "@/worker/api/auth";
 import type { Appointment } from "@/shared/types";
 import { generateICS, generateICSDataURL } from "@/worker/utils/ics";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 interface AppointmentWithService extends Appointment {
   service_title: string;

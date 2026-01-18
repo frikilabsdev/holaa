@@ -3,7 +3,7 @@ import { authMiddleware } from "@/worker/api/auth";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
-const servicesApi = new Hono<{ Bindings: Env }>();
+const servicesApi = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Validation schemas
 const createServiceSchema = z.object({
@@ -14,6 +14,7 @@ const createServiceSchema = z.object({
   duration_minutes: z.number().nullable().optional(),
   max_simultaneous_bookings: z.number().min(1).default(1),
   is_active: z.boolean().default(true),
+  main_image_url: z.string().nullable().optional(),
 });
 
 const updateServiceSchema = z.object({
@@ -23,6 +24,7 @@ const updateServiceSchema = z.object({
   duration_minutes: z.number().nullable().optional(),
   max_simultaneous_bookings: z.number().min(1).optional(),
   is_active: z.boolean().optional(),
+  main_image_url: z.string().nullable().optional(),
 });
 
 // Helper to verify tenant ownership

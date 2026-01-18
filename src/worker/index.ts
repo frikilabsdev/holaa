@@ -14,7 +14,7 @@ import uploadApi from "@/worker/api/upload";
 import authApi, { authMiddleware as authMw, SESSION_COOKIE_NAME, deleteSession } from "@/worker/api/auth";
 import { logger } from "@/worker/utils/logger";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Request timing middleware
 app.use("*", async (c, next) => {
@@ -88,10 +88,11 @@ app.onError((err, c) => {
   
   if (err.name === "ZodError") {
     // Validation errors - show details
+    const zodError = err as { issues?: unknown };
     return c.json(
       {
         error: "Error de validación",
-        details: isDevelopment ? err.issues : undefined,
+        details: isDevelopment ? zodError.issues : undefined,
       },
       400
     );
@@ -109,12 +110,14 @@ app.onError((err, c) => {
   }
 
   // Generic error
+  const errorStatus = (err as { status?: number }).status;
+  const status: 400 | 401 | 403 | 404 | 500 = (errorStatus && (errorStatus === 400 || errorStatus === 401 || errorStatus === 403 || errorStatus === 404 || errorStatus === 500)) ? errorStatus as 400 | 401 | 403 | 404 | 500 : 500;
   return c.json(
     {
       error: "Error interno del servidor",
       message: isDevelopment ? err.message : undefined,
     },
-    err.status || 500
+    status
   );
 });
 

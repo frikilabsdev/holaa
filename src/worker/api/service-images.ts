@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "@/worker/api/auth";
 import type { ServiceImage } from "@/shared/types";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
 
 // Helper to verify service ownership
 async function verifyServiceOwnership(
