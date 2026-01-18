@@ -496,7 +496,6 @@ app.post("/appointments", async (c) => {
 
   // Generate WhatsApp message
   let whatsappUrl: string | null = null;
-  let icsUrl: string | null = null;
 
   if (businessConfig?.whatsapp) {
     const whatsappNumber = businessConfig.whatsapp.replace(/[^0-9]/g, "");
