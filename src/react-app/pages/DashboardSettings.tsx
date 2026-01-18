@@ -147,14 +147,72 @@ export default function DashboardSettingsPage() {
     }
   };
 
+  // Función para comprimir imagen usando Canvas API
+  const compressImage = async (file: File, maxWidth: number, maxHeight: number, quality: number = 0.85): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+
+          // Calcular nuevas dimensiones manteniendo aspecto
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("No se pudo obtener contexto del canvas"));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error("Error al comprimir imagen"));
+              }
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error("Error al cargar imagen"));
+      };
+      reader.onerror = () => reject(new Error("Error al leer archivo"));
+    });
+  };
+
   const handleImageUpload = async (file: File, type: "profile" | "header") => {
     if (!selectedTenant) {
       alert("Por favor selecciona un negocio primero");
       return;
     }
 
-    const formDataToUpload = new FormData();
-    formDataToUpload.append("file", file);
+    // Validar tamaño (máx 10MB antes de comprimir)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      alert("El archivo es demasiado grande. Máximo 10MB");
+      return;
+    }
 
     if (type === "profile") {
       setUploadingProfile(true);
@@ -163,6 +221,18 @@ export default function DashboardSettingsPage() {
     }
 
     try {
+      // Comprimir imagen según el tipo
+      const maxWidth = type === "profile" ? 400 : 1920;
+      const maxHeight = type === "profile" ? 400 : 600;
+      
+      const compressedBlob = await compressImage(file, maxWidth, maxHeight, 0.85);
+      const compressedFile = new File([compressedBlob], file.name, { type: "image/jpeg" });
+
+      console.log(`Imagen ${type} comprimida: ${file.size} bytes -> ${compressedBlob.size} bytes (${Math.round((1 - compressedBlob.size / file.size) * 100)}% reducción)`);
+
+      const formDataToUpload = new FormData();
+      formDataToUpload.append("file", compressedFile);
+
       // Step 1: Upload image to R2
       const uploadResponse = await fetch("/api/upload/image", {
         method: "POST",

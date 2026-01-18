@@ -2,6 +2,60 @@ import { useState, useEffect, useRef } from "react";
 import { X, Upload, Image as ImageIcon, Trash2, Loader2 } from "lucide-react";
 import type { Service, ServiceImage } from "@/shared/types";
 
+// Función para comprimir imagen usando Canvas API
+async function compressImage(file: File, maxWidth: number = 800, maxHeight: number = 800, quality: number = 0.85): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        // Calcular nuevas dimensiones manteniendo aspecto
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo obtener contexto del canvas"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error("Error al comprimir imagen"));
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error("Error al cargar imagen"));
+    };
+    reader.onerror = () => reject(new Error("Error al leer archivo"));
+  });
+}
+
 interface ServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -78,8 +132,21 @@ export default function ServiceModal({
     setUploadingMainImage(true);
 
     try {
+      // Validar tamaño (máx 10MB antes de comprimir)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        alert("El archivo es demasiado grande. Máximo 10MB");
+        return;
+      }
+
+      // Comprimir imagen (800x800px máximo para imágenes de servicios)
+      const compressedBlob = await compressImage(file, 800, 800, 0.85);
+      const compressedFile = new File([compressedBlob], file.name, { type: "image/jpeg" });
+
+      console.log(`Imagen comprimida: ${file.size} bytes -> ${compressedBlob.size} bytes (${Math.round((1 - compressedBlob.size / file.size) * 100)}% reducción)`);
+
       const formDataToUpload = new FormData();
-      formDataToUpload.append("file", file);
+      formDataToUpload.append("file", compressedFile);
 
       const uploadResponse = await fetch("/api/upload/image", {
         method: "POST",
@@ -117,8 +184,21 @@ export default function ServiceModal({
       setUploadingAdditionalImages((prev) => new Set([...prev, tempId]));
 
       try {
+        // Validar tamaño (máx 10MB antes de comprimir)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          alert(`El archivo ${file.name} es demasiado grande. Máximo 10MB`);
+          continue;
+        }
+
+        // Comprimir imagen (800x800px máximo para imágenes adicionales)
+        const compressedBlob = await compressImage(file, 800, 800, 0.85);
+        const compressedFile = new File([compressedBlob], file.name, { type: "image/jpeg" });
+
+        console.log(`Imagen comprimida: ${file.name} - ${file.size} bytes -> ${compressedBlob.size} bytes (${Math.round((1 - compressedBlob.size / file.size) * 100)}% reducción)`);
+
         const formDataToUpload = new FormData();
-        formDataToUpload.append("file", file);
+        formDataToUpload.append("file", compressedFile);
 
         const uploadResponse = await fetch("/api/upload/image", {
           method: "POST",
