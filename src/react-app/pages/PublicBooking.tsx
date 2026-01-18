@@ -261,17 +261,43 @@ export default function PublicBookingPage() {
 
   const custom = tenantData?.customization;
 
+  const primaryColor = custom?.primary_color || "#3b82f6";
+  const secondaryColor = custom?.secondary_color || "#8b5cf6";
+  const backgroundColor = custom?.background_color || "#ffffff";
+  const textColor = custom?.text_color || "#1f2937";
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div 
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{
+          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
+            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
+            : custom?.background_type === "image" && custom?.background_image_url
+            ? `url(${custom.background_image_url}) center/cover no-repeat`
+            : backgroundColor,
+        }}
+      >
+        <div 
+          className="animate-spin rounded-full h-12 w-12 border-b-2"
+          style={{ borderTopColor: primaryColor }}
+        ></div>
       </div>
     );
   }
 
   if (error && !tenantData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+      <div 
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{
+          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
+            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
+            : custom?.background_type === "image" && custom?.background_image_url
+            ? `url(${custom.background_image_url}) center/cover no-repeat`
+            : backgroundColor,
+        }}
+      >
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-slate-900 mb-2">
@@ -285,9 +311,23 @@ export default function PublicBookingPage() {
 
   if (bookingComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+      <div 
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{
+          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
+            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
+            : custom?.background_type === "image" && custom?.background_image_url
+            ? `url(${custom.background_image_url}) center/cover no-repeat`
+            : backgroundColor,
+        }}
+      >
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-lg">
+          <div 
+            className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center shadow-lg"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            }}
+          >
             <CheckCircle className="w-12 h-12 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-slate-900 mb-3">
@@ -297,14 +337,22 @@ export default function PublicBookingPage() {
             Tu cita ha sido agendada exitosamente
           </p>
 
-          <div className="bg-blue-50 rounded-xl p-4 mb-6 text-left">
-            <div className="space-y-2 text-sm">
+          <div 
+            className="rounded-xl p-4 mb-6 text-left"
+            style={{
+              backgroundColor: `${primaryColor}10`,
+              borderColor: `${primaryColor}30`,
+              borderWidth: "1px",
+              borderStyle: "solid",
+            }}
+          >
+            <div className="space-y-2 text-sm" style={{ color: textColor }}>
               <div>
-                <span className="font-semibold text-slate-700">Servicio:</span>{" "}
+                <span className="font-semibold">Servicio:</span>{" "}
                 {selectedService?.title}
               </div>
               <div>
-                <span className="font-semibold text-slate-700">Fecha:</span>{" "}
+                <span className="font-semibold">Fecha:</span>{" "}
                 {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-MX", {
                   weekday: "long",
                   year: "numeric",
@@ -313,7 +361,7 @@ export default function PublicBookingPage() {
                 })}
               </div>
               <div>
-                <span className="font-semibold text-slate-700">Hora:</span>{" "}
+                <span className="font-semibold">Hora:</span>{" "}
                 {selectedTime}
               </div>
             </div>
@@ -338,7 +386,11 @@ export default function PublicBookingPage() {
 
           <button
             onClick={resetBooking}
-            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all"
+            className="w-full px-6 py-3 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
+            style={{
+              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+              boxShadow: `0 10px 15px -3px ${primaryColor}30, 0 4px 6px -2px ${primaryColor}20`,
+            }}
           >
             Generar otra cita
           </button>
@@ -388,7 +440,12 @@ export default function PublicBookingPage() {
                 }}
               />
             ) : (
-              <div className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full mx-auto border-4 border-white shadow-xl bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center">
+              <div 
+                className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full mx-auto border-4 border-white shadow-xl flex items-center justify-center"
+                style={{
+                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+                }}
+              >
                 <span className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
                   {tenantData?.config.business_name?.[0]?.toUpperCase() || "R"}
                 </span>
@@ -427,7 +484,7 @@ export default function PublicBookingPage() {
                   </a>
                 );
               })}
-            </div>
+              </div>
           )}
 
           {/* Contact Info */}
@@ -453,10 +510,10 @@ export default function PublicBookingPage() {
                   <span>WhatsApp</span>
                 </a>
               )}
-          </div>
+              </div>
           )}
+          </div>
         </div>
-      </div>
 
       <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 py-6 sm:py-8">
 
@@ -550,7 +607,7 @@ export default function PublicBookingPage() {
                         ${service.price.toFixed(2)}
                       </div>
                     )}
-                    </div>
+                  </div>
                   </div>
                 </div>
               </button>
@@ -590,7 +647,16 @@ export default function PublicBookingPage() {
           >
             <button
               onClick={() => setSelectedService(null)}
-              className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-4"
+              className="flex items-center space-x-2 mb-4 transition-colors"
+              style={{ 
+                color: custom?.text_color || "#6b7280",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = primaryColor;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = custom?.text_color || "#6b7280";
+              }}
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Cambiar servicio</span>
@@ -628,9 +694,20 @@ export default function PublicBookingPage() {
                         prevMonth.setMonth(prevMonth.getMonth() - 1);
                         setCurrentMonth(prevMonth);
                       }}
-                      className="p-1 hover:bg-slate-100 rounded transition-colors"
+                      className="p-1 rounded transition-colors"
+                      style={{
+                        color: custom?.text_color || "#6b7280",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = `${primaryColor}15`;
+                        e.currentTarget.style.color = primaryColor;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.color = custom?.text_color || "#6b7280";
+                      }}
                     >
-                      <ChevronLeft className="w-5 h-5 text-slate-600" />
+                      <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => {
@@ -638,9 +715,20 @@ export default function PublicBookingPage() {
                         nextMonth.setMonth(nextMonth.getMonth() + 1);
                         setCurrentMonth(nextMonth);
                       }}
-                      className="p-1 hover:bg-slate-100 rounded transition-colors"
+                      className="p-1 rounded transition-colors"
+                      style={{
+                        color: custom?.text_color || "#6b7280",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = `${primaryColor}15`;
+                        e.currentTarget.style.color = primaryColor;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.color = custom?.text_color || "#6b7280";
+                      }}
                     >
-                      <ChevronRight className="w-5 h-5 text-slate-600" />
+                      <ChevronRight className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
@@ -728,7 +816,7 @@ export default function PublicBookingPage() {
                 );
                     });
                   })()}
-                </div>
+            </div>
                 {availableDates.length < 30 && (
                   <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <p className="text-sm text-blue-800">
@@ -755,7 +843,16 @@ export default function PublicBookingPage() {
           >
             <button
               onClick={() => setSelectedDate("")}
-              className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-4"
+              className="flex items-center space-x-2 mb-4 transition-colors"
+              style={{ 
+                color: custom?.text_color || "#6b7280",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = primaryColor;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = custom?.text_color || "#6b7280";
+              }}
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Cambiar fecha</span>
@@ -879,7 +976,16 @@ export default function PublicBookingPage() {
           >
             <button
               onClick={() => setSelectedTime("")}
-              className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 mb-4"
+              className="flex items-center space-x-2 mb-4 transition-colors"
+              style={{ 
+                color: custom?.text_color || "#6b7280",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = primaryColor;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = custom?.text_color || "#6b7280";
+              }}
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Cambiar hora</span>
