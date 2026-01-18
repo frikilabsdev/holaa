@@ -1038,7 +1038,10 @@ export default function PublicBookingPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label 
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: custom?.text_color || "#374151" }}
+                >
                   Nombre completo *
                 </label>
                 <input
@@ -1048,13 +1051,29 @@ export default function PublicBookingPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, customer_name: e.target.value })
                   }
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
+                  style={{
+                    borderColor: custom?.card_border_color || "#d1d5db",
+                    backgroundColor: custom?.card_background_color || "#ffffff",
+                    color: custom?.text_color || "#111827",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = primaryColor;
+                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                   placeholder="Juan Pérez"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label 
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: custom?.text_color || "#374151" }}
+                >
                   Teléfono / WhatsApp *
                 </label>
                 <input
@@ -1064,13 +1083,29 @@ export default function PublicBookingPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, customer_phone: e.target.value })
                   }
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
+                  style={{
+                    borderColor: custom?.card_border_color || "#d1d5db",
+                    backgroundColor: custom?.card_background_color || "#ffffff",
+                    color: custom?.text_color || "#111827",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = primaryColor;
+                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                   placeholder="+52 55 1234 5678"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label 
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: custom?.text_color || "#374151" }}
+                >
                   Email (opcional)
                 </label>
                 <input
@@ -1079,7 +1114,20 @@ export default function PublicBookingPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, customer_email: e.target.value })
                   }
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
+                  style={{
+                    borderColor: custom?.card_border_color || "#d1d5db",
+                    backgroundColor: custom?.card_background_color || "#ffffff",
+                    color: custom?.text_color || "#111827",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = primaryColor;
+                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                   placeholder="correo@ejemplo.com"
                 />
               </div>
@@ -1189,7 +1237,10 @@ export default function PublicBookingPage() {
               )}
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label 
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: custom?.text_color || "#374151" }}
+                >
                   Notas adicionales (opcional)
                 </label>
                 <textarea
@@ -1198,7 +1249,20 @@ export default function PublicBookingPage() {
                     setFormData({ ...formData, notes: e.target.value })
                   }
                   rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none"
+                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all resize-none"
+                  style={{
+                    borderColor: custom?.card_border_color || "#d1d5db",
+                    backgroundColor: custom?.card_background_color || "#ffffff",
+                    color: custom?.text_color || "#111827",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = primaryColor;
+                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                   placeholder="Alguna preferencia o comentario..."
                 />
               </div>
