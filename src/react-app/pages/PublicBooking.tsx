@@ -794,17 +794,46 @@ export default function PublicBookingPage() {
                       
                 const primaryColor = custom?.primary_color || "#3b82f6";
                 const textColor = custom?.text_color || "#374151";
-                const isSelectedStyle = isSelected ? { backgroundColor: primaryColor, color: "#ffffff", border: "none" } : {};
+                const backgroundColor = custom?.background_color || "#ffffff";
+                
+                // Detectar si es modo oscuro (background oscuro)
+                const isDarkMode = backgroundColor && (
+                  backgroundColor.toLowerCase().includes("#0") || 
+                  backgroundColor.toLowerCase().includes("#1") ||
+                  backgroundColor.toLowerCase().includes("#2") ||
+                  parseInt(backgroundColor.replace("#", ""), 16) < parseInt("333333", 16)
+                );
+                
+                const isSelectedStyle = isSelected ? { 
+                  backgroundColor: primaryColor, 
+                  color: "#ffffff", 
+                  border: "none" 
+                } : {};
+                
                 // Para "hoy": solo borde, sin fondo, y el texto usa el color de texto normal
                 const isTodayStyle = isToday && !isSelected ? { 
                   border: `2px solid ${primaryColor}`, 
                   backgroundColor: "transparent",
                   color: textColor 
                 } : {};
-                const defaultStyle = !isSelected && !isToday ? { 
+                
+                // Para fechas disponibles: usar el color de texto con contraste adecuado
+                const defaultStyle = !isSelected && !isToday && isAvailable ? { 
                   color: textColor,
-                  border: "none"
+                  border: "none",
+                  backgroundColor: "transparent"
                 } : {};
+                
+                // Estilos para fechas deshabilitadas
+                const disabledStyle = !isAvailable ? (isDarkMode ? {
+                  color: "#9ca3af",
+                  backgroundColor: "rgba(156, 163, 175, 0.1)",
+                  border: "none"
+                } : {
+                  color: "#d1d5db",
+                  backgroundColor: "#f3f4f6",
+                  border: "none"
+                }) : {};
                 
                 return (
                   <button
@@ -814,12 +843,13 @@ export default function PublicBookingPage() {
                           className={`aspect-square flex items-center justify-center text-sm font-medium transition-all rounded-full ${
                             isAvailable
                               ? "hover:opacity-80 cursor-pointer"
-                              : "text-slate-300 bg-slate-100 opacity-40 cursor-not-allowed line-through"
+                              : "opacity-60 cursor-not-allowed line-through"
                           }`}
                           style={{
                             ...isSelectedStyle,
                             ...isTodayStyle,
                             ...defaultStyle,
+                            ...disabledStyle,
                           }}
                         >
                       {dateObj.getDate()}
