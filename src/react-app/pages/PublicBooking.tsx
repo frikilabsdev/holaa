@@ -12,6 +12,7 @@ import {
   Loader2,
   AlertCircle,
   ArrowLeft,
+  Search,
 } from "lucide-react";
 import type { Service, BusinessConfig, Tenant, PaymentMethod, SocialNetwork, VisualCustomization } from "@/shared/types";
 import { getSocialIcon } from "@/react-app/components/SocialIcons";
@@ -45,6 +46,7 @@ export default function PublicBookingPage() {
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [detailModalService, setDetailModalService] = useState<Service | null>(null);
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
     customer_name: "",
@@ -515,6 +517,37 @@ export default function PublicBookingPage() {
           </div>
         </div>
 
+      {/* Búsqueda rápida de servicios (debajo de la tarjeta del negocio) */}
+      {!selectedService && services.length > 0 && (
+        <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 pt-4">
+          <div
+            className="relative rounded-xl shadow-md overflow-hidden"
+            style={{
+              backgroundColor: custom?.card_background_color || "#ffffff",
+              borderColor: custom?.card_border_color || "#e5e7eb",
+              borderWidth: "1px",
+              borderStyle: "solid",
+            }}
+          >
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
+              style={{ color: custom?.time_text_color || "#9ca3af" }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar servicios..."
+              value={serviceSearchQuery}
+              onChange={(e) => setServiceSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3.5 text-base bg-transparent focus:outline-none placeholder-slate-400"
+              style={{
+                color: custom?.service_title_color || "#111827",
+              }}
+              aria-label="Buscar servicios"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 py-6 sm:py-8">
 
         {error && (
@@ -527,7 +560,15 @@ export default function PublicBookingPage() {
         {/* Step 1: Select Service (Linktree style cards) */}
         {!selectedService && (
           <div className="space-y-3">
-            {services.map((service) => {
+            {services
+              .filter((service) => {
+                const q = serviceSearchQuery.trim().toLowerCase();
+                if (!q) return true;
+                const matchTitle = service.title.toLowerCase().includes(q);
+                const matchDesc = service.description?.toLowerCase().includes(q);
+                return matchTitle || matchDesc;
+              })
+              .map((service) => {
               const descriptionSummary = service.description
                 ? (service.description.length > 120 ? service.description.substring(0, 120) + "..." : service.description)
                 : null;
