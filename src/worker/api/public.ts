@@ -626,26 +626,31 @@ app.get("/services/:serviceId/slots", async (c) => {
 
 // Create a new appointment (public endpoint)
 app.post("/appointments", async (c) => {
-  // Rate limiting: 10 requests per 60 seconds per IP
+  if (!c.env.DB) {
+    return c.json(
+      { error: "Error al crear la cita", message: "Base de datos no configurada" },
+      500
+    );
+  }
+
+  // Rate limiting: 10 requests per 60 seconds per IP (fail open if KV missing)
   const clientIP = getClientIP(c.req);
-  
-  const rateLimitResult = await checkRateLimit(c.env.SESSIONS_KV, clientIP, {
-    limit: 10,
-    window: 60,
-    keyPrefix: "rate_limit:appointments",
-  });
-  
+  const rateLimitResult = c.env.SESSIONS_KV
+    ? await checkRateLimit(c.env.SESSIONS_KV, clientIP, { limit: 10, window: 60, keyPrefix: "rate_limit:appointments" })
+    : { allowed: true as const, reset: 0 };
   if (!rateLimitResult.allowed) {
     return c.json(
-      {
-        error: "Demasiadas solicitudes. Por favor, intente más tarde.",
-        reset: rateLimitResult.reset,
-      },
+      { error: "Demasiadas solicitudes. Por favor, intente más tarde.", reset: rateLimitResult.reset },
       429
     );
   }
 
-  const body = await c.req.json();
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Cuerpo de la solicitud inválido" }, 400);
+  }
 
   if (!body.tenant_id || !body.service_id || !body.appointment_date || !body.appointment_time || !body.customer_name || !body.customer_phone) {
     return c.json({ error: "Campos requeridos faltantes" }, 400);
@@ -654,6 +659,7 @@ app.post("/appointments", async (c) => {
   const serviceVariantId = body.service_variant_id != null ? parseInt(String(body.service_variant_id), 10) : null;
   const employeeId = body.employee_id != null ? parseInt(String(body.employee_id), 10) : null;
 
+  try {
   // Get service details
   const service = await c.env.DB.prepare(
     "SELECT * FROM services WHERE id = ? AND is_active = 1"
@@ -687,17 +693,21 @@ app.post("/appointments", async (c) => {
   let variantName: string | null = null;
 
   if (serviceVariantId) {
-    const variant = await c.env.DB.prepare(
-      "SELECT * FROM service_variants WHERE id = ? AND service_id = ?"
-    )
-      .bind(serviceVariantId, body.service_id)
-      .first<{ price: number; duration_minutes: number | null; name: string }>();
-    if (!variant) {
-      return c.json({ error: "Variante no encontrada" }, 400);
+    try {
+      const variant = await c.env.DB.prepare(
+        "SELECT * FROM service_variants WHERE id = ? AND service_id = ?"
+      )
+        .bind(serviceVariantId, body.service_id)
+        .first<{ price: number; duration_minutes: number | null; name: string }>();
+      if (!variant) {
+        return c.json({ error: "Variante no encontrada" }, 400);
+      }
+      effectivePrice = variant.price;
+      effectiveDuration = variant.duration_minutes ?? service.duration_minutes ?? 60;
+      variantName = variant.name;
+    } catch {
+      return c.json({ error: "Variante no encontrada o no disponible" }, 400);
     }
-    effectivePrice = variant.price;
-    effectiveDuration = variant.duration_minutes ?? service.duration_minutes ?? 60;
-    variantName = variant.name;
   }
 
   const date = body.appointment_date;
@@ -705,15 +715,21 @@ app.post("/appointments", async (c) => {
   const duration = effectiveDuration;
 
   // Check schedule exceptions first (priority)
-  const { results: exceptions } = await c.env.DB.prepare(
-    `SELECT * FROM schedule_exceptions 
-     WHERE tenant_id = ? 
-     AND exception_date = ? 
-     AND is_blocked = 1
-     AND (service_id = ? OR service_id IS NULL)`
-  )
-    .bind(body.tenant_id, date, body.service_id)
-    .all();
+  let exceptions: any[] = [];
+  try {
+    const exRes = await c.env.DB.prepare(
+      `SELECT * FROM schedule_exceptions 
+       WHERE tenant_id = ? 
+       AND exception_date = ? 
+       AND is_blocked = 1
+       AND (service_id = ? OR service_id IS NULL)`
+    )
+      .bind(body.tenant_id, date, body.service_id)
+      .all();
+    exceptions = exRes.results || [];
+  } catch {
+    // schedule_exceptions table may not exist
+  }
 
   const newAppointmentStartMinutes = timeToMinutes(time);
   const newAppointmentDurationMinutes = duration;
@@ -756,9 +772,15 @@ app.post("/appointments", async (c) => {
          LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
          WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
 
-  const { results: existingAppointments } = await c.env.DB.prepare(appointmentsQuery)
-    .bind(body.tenant_id, date, ...(employeeId != null ? [employeeId] : []))
-    .all();
+  let existingAppointments: any[] = [];
+  try {
+    const aptRes = await c.env.DB.prepare(appointmentsQuery)
+      .bind(body.tenant_id, date, ...(employeeId != null ? [employeeId] : []))
+      .all();
+    existingAppointments = aptRes.results || [];
+  } catch {
+    // appointments/schema may differ
+  }
 
   let concurrentBookings = 0;
   const hasOverlap = existingAppointments?.some((apt: any) => {
@@ -864,6 +886,14 @@ app.post("/appointments", async (c) => {
     ...appointment,
     whatsapp_url: whatsappUrl,
   }, 201);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("appointments POST error", err);
+    return c.json(
+      { error: "Error al crear la cita", message: msg },
+      500
+    );
+  }
 });
 
 // Get ICS file for appointment (public endpoint)

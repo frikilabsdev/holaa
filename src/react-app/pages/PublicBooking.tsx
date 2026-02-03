@@ -296,12 +296,13 @@ export default function PublicBookingPage() {
           }, 1500);
         }
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Error al crear la cita");
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData?.message || errorData?.error || `Error ${response.status} al crear la cita`;
+        setError(msg);
       }
-    } catch (error) {
-      console.error("Error al crear cita:", error);
-      setError("Error al procesar la reserva");
+    } catch (err) {
+      console.error("Error al crear cita:", err);
+      setError("Error al procesar la reserva. Intenta de nuevo.");
     } finally {
       setIsSubmitting(false);
     }
