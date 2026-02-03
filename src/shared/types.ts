@@ -104,11 +104,52 @@ export interface ScheduleException {
   updated_at: string;
 }
 
+export interface Employee {
+  id: number;
+  tenant_id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeService {
+  id: number;
+  employee_id: number;
+  service_id: number;
+  created_at: string;
+}
+
+export interface EmployeeSchedule {
+  id: number;
+  employee_id: number;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeTimeOff {
+  id: number;
+  employee_id: number;
+  date_from: string;
+  date_to: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Appointment {
   id: number;
   tenant_id: number;
   service_id: number;
   service_variant_id: number | null;
+  employee_id: number | null;
   customer_name: string;
   customer_phone: string;
   customer_email: string | null;

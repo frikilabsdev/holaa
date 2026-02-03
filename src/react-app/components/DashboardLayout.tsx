@@ -10,6 +10,7 @@ import {
   X,
   Briefcase,
   Clock,
+  Users,
 } from "lucide-react";
 
 export default function DashboardLayout() {
@@ -29,6 +30,7 @@ export default function DashboardLayout() {
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Servicios", href: "/dashboard/services", icon: Briefcase },
+    { name: "Empleados", href: "/dashboard/employees", icon: Users },
     { name: "Horarios", href: "/dashboard/schedules", icon: Clock },
     { name: "Citas", href: "/dashboard/appointments", icon: Calendar },
     { name: "Configuración", href: "/dashboard/settings", icon: Settings },

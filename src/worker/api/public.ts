@@ -111,6 +111,37 @@ app.get("/tenants/:slug/services", async (c) => {
   return c.json(servicesWithVariants);
 });
 
+// Get employees that can perform a service (for public booking)
+app.get("/tenants/:slug/services/:serviceId/employees", async (c) => {
+  const slug = c.req.param("slug");
+  const serviceId = parseInt(c.req.param("serviceId"));
+  if (isNaN(serviceId)) return c.json({ error: "Servicio inválido" }, 400);
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT id FROM tenants WHERE slug = ? AND is_active = 1"
+  )
+    .bind(slug)
+    .first<{ id: number }>();
+
+  if (!tenant) return c.json({ error: "Negocio no encontrado" }, 404);
+
+  try {
+    const { results: rows } = await c.env.DB.prepare(
+      `SELECT e.id, e.name, e.phone, e.email
+       FROM employees e
+       INNER JOIN employee_services es ON es.employee_id = e.id
+       WHERE e.tenant_id = ? AND e.is_active = 1 AND es.service_id = ?
+       ORDER BY e.display_order ASC, e.name ASC`
+    )
+      .bind(tenant.id, serviceId)
+      .all<{ id: number; name: string; phone: string | null; email: string | null }>();
+
+    return c.json(rows || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
 // Get active payment methods for a tenant
 app.get("/tenants/:slug/payment-methods", async (c) => {
   const slug = c.req.param("slug");
@@ -148,11 +179,13 @@ app.get("/services/:serviceId/images", async (c) => {
 });
 
 // Get available dates for a service (dates that have schedules)
-// Optional query: service_variant_id — if set, use variant's duration
+// Optional query: service_variant_id — if set, use variant's duration; employee_id — if set, use employee schedules
 app.get("/services/:serviceId/available-dates", async (c) => {
   const serviceId = parseInt(c.req.param("serviceId"));
   const variantIdParam = c.req.query("service_variant_id");
   const variantId = variantIdParam ? parseInt(variantIdParam) : null;
+  const employeeIdParam = c.req.query("employee_id");
+  const employeeId = employeeIdParam ? parseInt(employeeIdParam) : null;
 
   const service = await c.env.DB.prepare(
     "SELECT tenant_id, duration_minutes FROM services WHERE id = ? AND is_active = 1"
@@ -162,6 +195,15 @@ app.get("/services/:serviceId/available-dates", async (c) => {
 
   if (!service) {
     return c.json({ error: "Servicio no encontrado" }, 404);
+  }
+
+  if (employeeId != null) {
+    const canDo = await c.env.DB.prepare(
+      "SELECT 1 FROM employee_services WHERE employee_id = ? AND service_id = ?"
+    )
+      .bind(employeeId, serviceId)
+      .first();
+    if (!canDo) return c.json({ error: "Empleado no realiza este servicio" }, 400);
   }
 
   let durationMinutes = service.duration_minutes ?? 60;
@@ -187,12 +229,33 @@ app.get("/services/:serviceId/available-dates", async (c) => {
     const dateStr = d.toISOString().split("T")[0];
     const dayOfWeek = d.getDay(); // 0 = Sunday, 6 = Saturday
 
-    // Get schedules for this day of week for this service
-    const { results: schedules } = await c.env.DB.prepare(
-      "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
-    )
-      .bind(serviceId, dayOfWeek)
-      .all();
+    let schedules: { start_time: string; end_time: string }[] | null = null;
+    if (employeeId != null) {
+      try {
+        const r = await c.env.DB.prepare(
+          "SELECT start_time, end_time FROM employee_schedules WHERE employee_id = ? AND day_of_week = ? AND is_active = 1"
+        )
+          .bind(employeeId, dayOfWeek)
+          .all<{ start_time: string; end_time: string }>();
+        schedules = r.results?.length ? r.results : null;
+      } catch {
+        schedules = null;
+      }
+      if (!schedules || schedules.length === 0) continue;
+      const timeOff = await c.env.DB.prepare(
+        "SELECT 1 FROM employee_time_off WHERE employee_id = ? AND date_from <= ? AND date_to >= ?"
+      )
+        .bind(employeeId, dateStr, dateStr)
+        .first();
+      if (timeOff) continue;
+    } else {
+      const r = await c.env.DB.prepare(
+        "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
+      )
+        .bind(serviceId, dayOfWeek)
+        .all();
+      schedules = r.results as { start_time: string; end_time: string }[] | null;
+    }
 
     if (!schedules || schedules.length === 0) {
       continue;
@@ -215,16 +278,20 @@ app.get("/services/:serviceId/available-dates", async (c) => {
       continue;
     }
 
-    // Check existing appointments for this tenant on this date (effective duration from variant or service)
-    const { results: appointments } = await c.env.DB.prepare(
-      `SELECT a.appointment_time,
-              COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
-       FROM appointments a
-       JOIN services s ON a.service_id = s.id
-       LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
-       WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`
-    )
-      .bind(service.tenant_id, dateStr)
+    // Check existing appointments (when employee_id set, only that employee's appointments)
+    const aptQuery =
+      employeeId != null
+        ? `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
+           FROM appointments a JOIN services s ON a.service_id = s.id
+           LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+           WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'
+           AND (a.employee_id IS NULL OR a.employee_id = ?)`
+        : `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
+           FROM appointments a JOIN services s ON a.service_id = s.id
+           LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+           WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
+    const { results: appointments } = await c.env.DB.prepare(aptQuery)
+      .bind(service.tenant_id, dateStr, ...(employeeId != null ? [employeeId] : []))
       .all();
 
     // Generate time slots and check availability
@@ -275,12 +342,14 @@ app.get("/services/:serviceId/available-dates", async (c) => {
 });
 
 // Get available time slots for a service on a specific date
-// Optional query: service_variant_id — if set, use variant's duration
+// Optional query: service_variant_id — if set, use variant's duration; employee_id — if set, use employee schedules
 app.get("/services/:serviceId/slots", async (c) => {
   const serviceId = parseInt(c.req.param("serviceId"));
   const date = c.req.query("date");
   const variantIdParam = c.req.query("service_variant_id");
   const variantId = variantIdParam ? parseInt(variantIdParam) : null;
+  const employeeIdParam = c.req.query("employee_id");
+  const employeeId = employeeIdParam ? parseInt(employeeIdParam) : null;
 
   if (!date) {
     return c.json({ error: "Fecha requerida" }, 400);
@@ -294,6 +363,15 @@ app.get("/services/:serviceId/slots", async (c) => {
 
   if (!service) {
     return c.json({ error: "Servicio no encontrado" }, 404);
+  }
+
+  if (employeeId != null) {
+    const canDo = await c.env.DB.prepare(
+      "SELECT 1 FROM employee_services WHERE employee_id = ? AND service_id = ?"
+    )
+      .bind(employeeId, serviceId)
+      .first();
+    if (!canDo) return c.json({ error: "Empleado no realiza este servicio" }, 400);
   }
 
   let durationMinutes = service.duration_minutes ?? 60;
@@ -311,12 +389,33 @@ app.get("/services/:serviceId/slots", async (c) => {
   const dateObj = new Date(date + "T00:00:00");
   const dayOfWeek = dateObj.getDay();
 
-  // Get schedules for this day of week
-  const { results: schedules } = await c.env.DB.prepare(
-    "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
-  )
-    .bind(serviceId, dayOfWeek)
-    .all();
+  let schedules: { start_time: string; end_time: string }[] | null = null;
+  if (employeeId != null) {
+    try {
+      const r = await c.env.DB.prepare(
+        "SELECT start_time, end_time FROM employee_schedules WHERE employee_id = ? AND day_of_week = ? AND is_active = 1"
+      )
+        .bind(employeeId, dayOfWeek)
+        .all<{ start_time: string; end_time: string }>();
+      schedules = r.results?.length ? r.results : null;
+    } catch {
+      schedules = null;
+    }
+    if (!schedules || schedules.length === 0) return c.json([]);
+    const timeOff = await c.env.DB.prepare(
+      "SELECT 1 FROM employee_time_off WHERE employee_id = ? AND date_from <= ? AND date_to >= ?"
+    )
+      .bind(employeeId, date, date)
+      .first();
+    if (timeOff) return c.json([]);
+  } else {
+    const r = await c.env.DB.prepare(
+      "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
+    )
+      .bind(serviceId, dayOfWeek)
+      .all();
+    schedules = r.results as { start_time: string; end_time: string }[] | null;
+  }
 
   if (!schedules || schedules.length === 0) {
     return c.json([]);
@@ -333,17 +432,20 @@ app.get("/services/:serviceId/slots", async (c) => {
     .bind(service.tenant_id, date, serviceId)
     .all();
 
-  // Get all existing appointments for this tenant on this date (shared resource scheduling; effective duration from variant or service)
-  const { results: appointments } = await c.env.DB.prepare(
-    `SELECT a.appointment_time,
-            COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes,
-            s.max_simultaneous_bookings
-     FROM appointments a
-     JOIN services s ON a.service_id = s.id
-     LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
-     WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`
-  )
-    .bind(service.tenant_id, date)
+  // Get existing appointments (when employee_id set, only that employee's)
+  const aptQuery =
+    employeeId != null
+      ? `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes, s.max_simultaneous_bookings
+         FROM appointments a JOIN services s ON a.service_id = s.id
+         LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+         WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'
+         AND (a.employee_id IS NULL OR a.employee_id = ?)`
+      : `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes, s.max_simultaneous_bookings
+         FROM appointments a JOIN services s ON a.service_id = s.id
+         LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+         WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
+  const { results: appointments } = await c.env.DB.prepare(aptQuery)
+    .bind(service.tenant_id, date, ...(employeeId != null ? [employeeId] : []))
     .all();
 
   const duration = durationMinutes;
@@ -437,6 +539,7 @@ app.post("/appointments", async (c) => {
   }
 
   const serviceVariantId = body.service_variant_id != null ? parseInt(String(body.service_variant_id), 10) : null;
+  const employeeId = body.employee_id != null ? parseInt(String(body.employee_id), 10) : null;
 
   // Get service details
   const service = await c.env.DB.prepare(
@@ -452,6 +555,18 @@ app.post("/appointments", async (c) => {
   // Verify service belongs to tenant
   if (service.tenant_id !== body.tenant_id) {
     return c.json({ error: "Servicio no pertenece al negocio" }, 400);
+  }
+
+  // If employee_id provided, verify employee can do this service
+  if (employeeId != null) {
+    const empCheck = await c.env.DB.prepare(
+      "SELECT 1 FROM employees e INNER JOIN employee_services es ON es.employee_id = e.id WHERE e.id = ? AND e.tenant_id = ? AND es.service_id = ? AND e.is_active = 1"
+    )
+      .bind(employeeId, body.tenant_id, body.service_id)
+      .first();
+    if (!empCheck) {
+      return c.json({ error: "Empleado no válido para este servicio" }, 400);
+    }
   }
 
   let effectivePrice: number | null = service.price;
@@ -509,17 +624,27 @@ app.post("/appointments", async (c) => {
     return c.json({ error: "Este horario está bloqueado" }, 400);
   }
 
-  // Check for overlaps with existing appointments (effective duration from variant or service)
-  const { results: existingAppointments } = await c.env.DB.prepare(
-    `SELECT a.appointment_time,
+  // Check for overlaps: when booking with an employee, only count that employee's appointments
+  const appointmentsQuery =
+    employeeId != null
+      ? `SELECT a.appointment_time,
             COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes,
             s.max_simultaneous_bookings
-     FROM appointments a
-     JOIN services s ON a.service_id = s.id
-     LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
-     WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`
-  )
-    .bind(body.tenant_id, date)
+         FROM appointments a
+         JOIN services s ON a.service_id = s.id
+         LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+         WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'
+         AND (a.employee_id IS NULL OR a.employee_id = ?)`
+      : `SELECT a.appointment_time,
+            COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes,
+            s.max_simultaneous_bookings
+         FROM appointments a
+         JOIN services s ON a.service_id = s.id
+         LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+         WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
+
+  const { results: existingAppointments } = await c.env.DB.prepare(appointmentsQuery)
+    .bind(body.tenant_id, date, ...(employeeId != null ? [employeeId] : []))
     .all();
 
   let concurrentBookings = 0;
@@ -547,15 +672,16 @@ app.post("/appointments", async (c) => {
   // Create appointment
   const result = await c.env.DB.prepare(
     `INSERT INTO appointments (
-      tenant_id, service_id, service_variant_id, customer_name, customer_phone, customer_email,
+      tenant_id, service_id, service_variant_id, employee_id, customer_name, customer_phone, customer_email,
       appointment_date, appointment_time, status, notes, payment_method,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, datetime('now'), datetime('now'))`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, datetime('now'), datetime('now'))`
   )
     .bind(
       body.tenant_id,
       body.service_id,
       serviceVariantId,
+      employeeId,
       body.customer_name,
       body.customer_phone,
       body.customer_email || null,

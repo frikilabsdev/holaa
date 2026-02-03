@@ -13,8 +13,16 @@ import {
   AlertCircle,
   ArrowLeft,
   Search,
+  User,
 } from "lucide-react";
 import type { Service, ServiceVariant, BusinessConfig, Tenant, PaymentMethod, SocialNetwork, VisualCustomization } from "@/shared/types";
+
+interface PublicEmployee {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
 import { getSocialIcon } from "@/react-app/components/SocialIcons";
 import ServiceDetailModal from "@/react-app/components/ServiceDetailModal";
 
@@ -31,6 +39,8 @@ export default function PublicBookingPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ServiceVariant | null>(null);
+  const [employees, setEmployees] = useState<PublicEmployee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState("");
@@ -68,6 +78,16 @@ export default function PublicBookingPage() {
   }, [slug]);
 
   useEffect(() => {
+    if (selectedService && slug) {
+      fetchEmployeesForService(selectedService.id);
+      setSelectedEmployee(null);
+    } else {
+      setEmployees([]);
+      setSelectedEmployee(null);
+    }
+  }, [selectedService, slug]);
+
+  useEffect(() => {
     if (selectedService) {
       fetchAvailableDates();
       setSelectedDate("");
@@ -76,7 +96,7 @@ export default function PublicBookingPage() {
       setAvailableSlots([]);
       setCurrentMonth(new Date());
     }
-  }, [selectedService, selectedVariant]);
+  }, [selectedService, selectedVariant, selectedEmployee]);
 
   useEffect(() => {
     if (selectedService && selectedDate) {
@@ -86,7 +106,7 @@ export default function PublicBookingPage() {
       setSelectedTime("");
       setCurrentTimePage(0);
     }
-  }, [selectedService, selectedVariant, selectedDate]);
+  }, [selectedService, selectedVariant, selectedEmployee, selectedDate]);
 
   const fetchTenantData = async () => {
     try {
@@ -131,15 +151,29 @@ export default function PublicBookingPage() {
     }
   };
 
+  const fetchEmployeesForService = async (serviceId: number) => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/public/tenants/${slug}/services/${serviceId}/employees`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmployees(data);
+      } else {
+        setEmployees([]);
+      }
+    } catch {
+      setEmployees([]);
+    }
+  };
+
   const fetchAvailableDates = async () => {
     if (!selectedService) return;
-    
     setIsLoadingDates(true);
     try {
-      let url = `/api/public/services/${selectedService.id}/available-dates`;
-      if (selectedVariant?.id) {
-        url += `?service_variant_id=${selectedVariant.id}`;
-      }
+      const params = new URLSearchParams();
+      if (selectedVariant?.id) params.set("service_variant_id", String(selectedVariant.id));
+      if (selectedEmployee != null) params.set("employee_id", String(selectedEmployee));
+      const url = `/api/public/services/${selectedService.id}/available-dates${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -154,12 +188,12 @@ export default function PublicBookingPage() {
 
   const fetchAvailableSlots = async () => {
     if (!selectedService || !selectedDate) return;
-
     setIsLoadingSlots(true);
     try {
-      const response = await fetch(
-        `/api/public/services/${selectedService.id}/slots?date=${selectedDate}`
-      );
+      const params = new URLSearchParams({ date: selectedDate });
+      if (selectedVariant?.id) params.set("service_variant_id", String(selectedVariant.id));
+      if (selectedEmployee != null) params.set("employee_id", String(selectedEmployee));
+      const response = await fetch(`/api/public/services/${selectedService.id}/slots?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setAvailableSlots(data);
@@ -189,6 +223,7 @@ export default function PublicBookingPage() {
           tenant_id: tenantData.tenant.id,
           service_id: selectedService.id,
           service_variant_id: selectedVariant?.id ?? null,
+          employee_id: selectedEmployee ?? null,
           appointment_date: selectedDate,
           appointment_time: selectedTime,
           payment_method: selectedPaymentMethod?.method_type || null,
@@ -224,6 +259,7 @@ export default function PublicBookingPage() {
     setBookingComplete(false);
     setSelectedService(null);
     setSelectedVariant(null);
+    setSelectedEmployee(null);
     setSelectedDate("");
     setSelectedTime("");
     setFormData({
@@ -707,7 +743,7 @@ export default function PublicBookingPage() {
             }}
           >
             <button
-              onClick={() => { setSelectedService(null); setSelectedVariant(null); }}
+              onClick={() => { setSelectedService(null); setSelectedVariant(null); setSelectedEmployee(null); }}
               className="flex items-center space-x-2 mb-4 transition-colors"
               style={{ 
                 color: custom?.text_color || "#6b7280",
@@ -722,6 +758,42 @@ export default function PublicBookingPage() {
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Cambiar servicio</span>
             </button>
+
+            {employees.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: custom?.service_title_color || "#111827" }}>
+                  <User className="w-4 h-4" />
+                  ¿Con qué empleado?
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmployee(null)}
+                    className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-colors ${
+                      selectedEmployee === null
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    Cualquiera
+                  </button>
+                  {employees.map((emp) => (
+                    <button
+                      key={emp.id}
+                      type="button"
+                      onClick={() => setSelectedEmployee(emp.id)}
+                      className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-colors ${
+                        selectedEmployee === emp.id
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {emp.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <h2 className="text-xl font-bold mb-4" style={{ color: custom?.service_title_color || "#111827" }}>
               Selecciona la fecha
