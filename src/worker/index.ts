@@ -12,6 +12,7 @@ import paymentsApi from "@/worker/api/payments";
 import customizeApi from "@/worker/api/customize";
 import uploadApi from "@/worker/api/upload";
 import authApi, { authMiddleware as authMw, SESSION_COOKIE_NAME, deleteSession } from "@/worker/api/auth";
+import adminApi from "@/worker/api/admin";
 import { logger } from "@/worker/utils/logger";
 
 const app = new Hono<{ Bindings: Env; Variables: HonoContextVariables }>();
@@ -45,6 +46,7 @@ const ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
   "https://citame.click",
   "https://www.citame.click",
+  "https://admin.citame.click",
 ];
 
 app.use(
@@ -168,6 +170,7 @@ app.route("/api/social", socialApi);
 app.route("/api/payments", paymentsApi);
 app.route("/api/customize", customizeApi);
 app.route("/api/upload", uploadApi);
+app.route("/api/admin", adminApi);
 
 // Get current user (alias for /api/auth/me)
 app.get("/api/users/me", authMw, async (c) => {

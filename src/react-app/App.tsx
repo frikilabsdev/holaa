@@ -10,6 +10,8 @@ import DashboardSchedulesPage from "@/react-app/pages/DashboardSchedules";
 import DashboardAppointmentsPage from "@/react-app/pages/DashboardAppointments";
 import DashboardSettingsPage from "@/react-app/pages/DashboardSettings";
 import PublicBookingPage from "@/react-app/pages/PublicBooking";
+import AdminLoginPage from "@/react-app/pages/AdminLogin";
+import AdminDashboardPage from "@/react-app/pages/AdminDashboard";
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/admin" element={<AdminLoginPage />} />
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/:slug" element={<PublicBookingPage />} />
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<DashboardPage />} />
