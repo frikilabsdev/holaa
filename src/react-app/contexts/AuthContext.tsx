@@ -28,7 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function checkAuth() {
     const pathname = window.location.pathname;
     const isDashboardRoute = pathname.startsWith("/dashboard");
-    const isAuthPage = pathname === "/login" || pathname === "/register";
 
     // Solo comprobar sesión cuando el usuario está en una ruta que lo requiere (dashboard)
     if (!isDashboardRoute) {
