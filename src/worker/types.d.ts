@@ -5,6 +5,8 @@ interface Env {
   SESSIONS_KV: KVNamespace;
   /** Contraseña para acceso al panel de administración (admin.citame.click). Configurar como secret en Cloudflare. */
   ADMIN_PASSWORD?: string;
+  /** Número de contacto de soporte Citame (solo dígitos con código de país). Configurar en Variables and Secrets. */
+  SUPPORT_PHONE?: string;
 }
 
 // Types for Hono context variables

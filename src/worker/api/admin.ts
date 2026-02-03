@@ -62,10 +62,13 @@ app.post("/logout", async (c) => {
 app.get("/me", async (c) => {
   const token = getCookie(c, ADMIN_SESSION_COOKIE);
   if (!token) {
-    return c.json({ admin: false }, 200);
+    return c.json({ admin: false, supportPhone: null }, 200);
   }
   const valid = await getAdminSession(c.env.SESSIONS_KV, token);
-  return c.json({ admin: valid });
+  return c.json({
+    admin: valid,
+    supportPhone: valid && c.env.SUPPORT_PHONE ? c.env.SUPPORT_PHONE : null,
+  });
 });
 
 // All routes below require admin

@@ -9,3 +9,7 @@
 
 MOCHA_USERS_SERVICE_API_URL=https://api.getmocha.com
 MOCHA_USERS_SERVICE_API_KEY=tu_api_key_aqui
+
+# Panel admin (opcional en local)
+# ADMIN_PASSWORD=tu_contraseña_admin
+# SUPPORT_PHONE=5215512345678
