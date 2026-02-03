@@ -8,6 +8,7 @@ import {
   Trash2,
   Key,
   Loader2,
+  MessageCircle,
 } from "lucide-react";
 
 type Business = {
@@ -92,6 +93,13 @@ export default function AdminDashboard() {
     } finally {
       setActionLoading((prev) => ({ ...prev, [key]: false }));
     }
+  };
+
+  const whatsappUrl = (whatsapp: string | null) => {
+    if (!whatsapp) return null;
+    const digits = whatsapp.replace(/\D/g, "");
+    if (!digits.length) return null;
+    return `https://wa.me/${digits}`;
   };
 
   const openChangePassword = (userId: string, email: string) => {
@@ -191,6 +199,17 @@ export default function AdminDashboard() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex items-center gap-1">
+                        {whatsappUrl(b.whatsapp) && (
+                          <a
+                            href={whatsappUrl(b.whatsapp)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Abrir chat con el dueño del negocio"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </a>
+                        )}
                         {b.is_active ? (
                           <button
                             type="button"
