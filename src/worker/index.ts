@@ -99,7 +99,7 @@ app.onError((err, c) => {
     return c.json(
       {
         error: "Error en la base de datos",
-        ...(includeMessage && { message: errMessage }),
+        message: errMessage, // Siempre incluir para depurar (p. ej. "no such table")
       },
       500
     );
