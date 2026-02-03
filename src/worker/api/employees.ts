@@ -379,6 +379,11 @@ app.post(
   authMiddleware,
   zValidator("json", createScheduleSchema),
   async (c) => {
+    if (!c.env.DB) {
+      logger.error("POST /api/employees/:id/schedules: DB binding missing", undefined, { path: c.req.path });
+      return c.json({ error: "Error al crear horario", message: "DB no configurado" }, 503);
+    }
+
     const user = c.get("user");
     if (!user) return c.json({ error: "No autenticado" }, 401);
 
@@ -400,8 +405,10 @@ app.post(
         ? await c.env.DB.prepare("SELECT * FROM employee_schedules WHERE id = ?").bind(rowId).first<EmployeeSchedule>()
         : null;
       return c.json(row ?? { id: rowId, employee_id: id, ...data }, 201);
-    } catch {
-      return c.json({ error: "Error al crear horario" }, 500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error("POST /api/employees/:id/schedules", err, { path: c.req.path });
+      return c.json({ error: "Error al crear horario", message: msg }, 500);
     }
   }
 );
