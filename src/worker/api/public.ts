@@ -142,6 +142,40 @@ app.get("/tenants/:slug/services/:serviceId/employees", async (c) => {
   }
 });
 
+// Get weekly schedule for an employee (public, for display in booking)
+app.get("/tenants/:slug/services/:serviceId/employees/:employeeId/schedules", async (c) => {
+  const slug = c.req.param("slug");
+  const serviceId = parseInt(c.req.param("serviceId"));
+  const employeeId = parseInt(c.req.param("employeeId"));
+  if (isNaN(serviceId) || isNaN(employeeId)) return c.json({ error: "Parámetros inválidos" }, 400);
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT id FROM tenants WHERE slug = ? AND is_active = 1"
+  )
+    .bind(slug)
+    .first<{ id: number }>();
+
+  if (!tenant) return c.json({ error: "Negocio no encontrado" }, 404);
+
+  const canDo = await c.env.DB.prepare(
+    "SELECT 1 FROM employees e INNER JOIN employee_services es ON es.employee_id = e.id WHERE e.id = ? AND e.tenant_id = ? AND e.is_active = 1 AND es.service_id = ?"
+  )
+    .bind(employeeId, tenant.id, serviceId)
+    .first();
+  if (!canDo) return c.json({ error: "Empleado no encontrado o no realiza este servicio" }, 404);
+
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT day_of_week, start_time, end_time FROM employee_schedules WHERE employee_id = ? AND is_active = 1 ORDER BY day_of_week, start_time"
+    )
+      .bind(employeeId)
+      .all<{ day_of_week: number; start_time: string; end_time: string }>();
+    return c.json(results || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
 // Get active payment methods for a tenant
 app.get("/tenants/:slug/payment-methods", async (c) => {
   const slug = c.req.param("slug");
@@ -181,164 +215,195 @@ app.get("/services/:serviceId/images", async (c) => {
 // Get available dates for a service (dates that have schedules)
 // Optional query: service_variant_id — if set, use variant's duration; employee_id — if set, use employee schedules
 app.get("/services/:serviceId/available-dates", async (c) => {
-  const serviceId = parseInt(c.req.param("serviceId"));
-  const variantIdParam = c.req.query("service_variant_id");
-  const variantId = variantIdParam ? parseInt(variantIdParam) : null;
-  const employeeIdParam = c.req.query("employee_id");
-  const employeeId = employeeIdParam ? parseInt(employeeIdParam) : null;
-
-  const service = await c.env.DB.prepare(
-    "SELECT tenant_id, duration_minutes FROM services WHERE id = ? AND is_active = 1"
-  )
-    .bind(serviceId)
-    .first<{ tenant_id: number; duration_minutes: number | null }>();
-
-  if (!service) {
-    return c.json({ error: "Servicio no encontrado" }, 404);
+  if (!c.env.DB) {
+    return c.json(
+      { error: "Error al obtener fechas disponibles", message: "Base de datos no configurada" },
+      500
+    );
   }
-
-  if (employeeId != null) {
-    const canDo = await c.env.DB.prepare(
-      "SELECT 1 FROM employee_services WHERE employee_id = ? AND service_id = ?"
-    )
-      .bind(employeeId, serviceId)
-      .first();
-    if (!canDo) return c.json({ error: "Empleado no realiza este servicio" }, 400);
-  }
-
-  let durationMinutes = service.duration_minutes ?? 60;
-  if (variantId) {
-    const variant = await c.env.DB.prepare(
-      "SELECT duration_minutes FROM service_variants WHERE id = ? AND service_id = ?"
-    )
-      .bind(variantId, serviceId)
-      .first<{ duration_minutes: number | null }>();
-    if (variant && variant.duration_minutes != null) {
-      durationMinutes = variant.duration_minutes;
+  try {
+    const serviceId = parseInt(c.req.param("serviceId"), 10);
+    if (isNaN(serviceId)) {
+      return c.json({ error: "ID de servicio inválido" }, 400);
     }
-  }
+    const variantIdParam = c.req.query("service_variant_id");
+    const variantId = variantIdParam ? parseInt(variantIdParam, 10) : null;
+    const employeeIdParam = c.req.query("employee_id");
+    const employeeId = employeeIdParam ? parseInt(employeeIdParam, 10) : null;
 
-  const today = new Date();
-  const thirtyDaysLater = new Date(today);
-  thirtyDaysLater.setDate(today.getDate() + 30);
+    const service = await c.env.DB.prepare(
+      "SELECT tenant_id, duration_minutes FROM services WHERE id = ? AND is_active = 1"
+    )
+      .bind(serviceId)
+      .first<{ tenant_id: number; duration_minutes: number | null }>();
 
-  const availableDates: string[] = [];
+    if (!service) {
+      return c.json({ error: "Servicio no encontrado" }, 404);
+    }
 
-  // Check each date from today to 30 days ahead
-  for (let d = new Date(today); d <= thirtyDaysLater; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().split("T")[0];
-    const dayOfWeek = d.getDay(); // 0 = Sunday, 6 = Saturday
-
-    let schedules: { start_time: string; end_time: string }[] | null = null;
     if (employeeId != null) {
-      try {
-        const r = await c.env.DB.prepare(
-          "SELECT start_time, end_time FROM employee_schedules WHERE employee_id = ? AND day_of_week = ? AND is_active = 1"
-        )
-          .bind(employeeId, dayOfWeek)
-          .all<{ start_time: string; end_time: string }>();
-        schedules = r.results?.length ? r.results : null;
-      } catch {
-        schedules = null;
-      }
-      if (!schedules || schedules.length === 0) continue;
-      const timeOff = await c.env.DB.prepare(
-        "SELECT 1 FROM employee_time_off WHERE employee_id = ? AND date_from <= ? AND date_to >= ?"
+      const canDo = await c.env.DB.prepare(
+        "SELECT 1 FROM employee_services WHERE employee_id = ? AND service_id = ?"
       )
-        .bind(employeeId, dateStr, dateStr)
+        .bind(employeeId, serviceId)
         .first();
-      if (timeOff) continue;
-    } else {
-      const r = await c.env.DB.prepare(
-        "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
-      )
-        .bind(serviceId, dayOfWeek)
-        .all();
-      schedules = r.results as { start_time: string; end_time: string }[] | null;
+      if (!canDo) return c.json({ error: "Empleado no realiza este servicio" }, 400);
     }
 
-    if (!schedules || schedules.length === 0) {
-      continue;
+    let durationMinutes = service.duration_minutes ?? 60;
+    if (variantId) {
+      try {
+        const variant = await c.env.DB.prepare(
+          "SELECT duration_minutes FROM service_variants WHERE id = ? AND service_id = ?"
+        )
+          .bind(variantId, serviceId)
+          .first<{ duration_minutes: number | null }>();
+        if (variant && variant.duration_minutes != null) {
+          durationMinutes = variant.duration_minutes;
+        }
+      } catch {
+        // service_variants table may not exist
+      }
     }
 
-    // Check for schedule exceptions (blocks) on this date
-    const { results: exceptions } = await c.env.DB.prepare(
-      `SELECT * FROM schedule_exceptions 
-       WHERE tenant_id = ? 
-       AND exception_date = ? 
-       AND is_blocked = 1
-       AND (service_id = ? OR service_id IS NULL)`
-    )
-      .bind(service.tenant_id, dateStr, serviceId)
-      .all();
+    const today = new Date();
+    const thirtyDaysLater = new Date(today);
+    thirtyDaysLater.setDate(today.getDate() + 30);
 
-    // If whole day is blocked, skip
-    const isWholeDayBlocked = exceptions?.some((e: any) => !e.start_time && !e.end_time);
-    if (isWholeDayBlocked) {
-      continue;
-    }
+    const availableDates: string[] = [];
 
-    // Check existing appointments (when employee_id set, only that employee's appointments)
-    const aptQuery =
-      employeeId != null
-        ? `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
-           FROM appointments a JOIN services s ON a.service_id = s.id
-           LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
-           WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'
-           AND (a.employee_id IS NULL OR a.employee_id = ?)`
-        : `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
-           FROM appointments a JOIN services s ON a.service_id = s.id
-           LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
-           WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
-    const { results: appointments } = await c.env.DB.prepare(aptQuery)
-      .bind(service.tenant_id, dateStr, ...(employeeId != null ? [employeeId] : []))
-      .all();
+    for (let d = new Date(today); d <= thirtyDaysLater; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split("T")[0];
+      const dayOfWeek = d.getDay();
 
-    // Generate time slots and check availability
-    let hasAvailableSlots = false;
-
-    for (const schedule of schedules as any[]) {
-      const scheduleStart = timeToMinutes(schedule.start_time);
-      const scheduleEnd = timeToMinutes(schedule.end_time);
-      const duration = durationMinutes;
-      const slotInterval = 15; // 15 minute intervals
-
-      for (let slotStart = scheduleStart; slotStart + duration <= scheduleEnd; slotStart += slotInterval) {
-        const slotEnd = slotStart + duration;
-
-        // Check if slot is blocked by exception
-        const isBlocked = exceptions?.some((e: any) => {
-          if (!e.start_time) return false; // Already checked whole day
-          const exStart = timeToMinutes(e.start_time);
-          const exEnd = e.end_time ? timeToMinutes(e.end_time) : exStart + 60;
-          return timeRangesOverlap(slotStart, slotEnd, exStart, exEnd);
-        });
-
-        if (isBlocked) continue;
-
-        // Check if slot overlaps with existing appointments (shared resource scheduling)
-        const hasOverlap = appointments?.some((apt: any) => {
-          const aptStart = timeToMinutes(apt.appointment_time);
-          const aptDuration = apt.duration_minutes || 60;
-          const aptEnd = aptStart + aptDuration;
-          return timeRangesOverlap(slotStart, slotEnd, aptStart, aptEnd);
-        });
-
-        if (!hasOverlap) {
-          hasAvailableSlots = true;
-          break;
+      let schedules: { start_time: string; end_time: string }[] | null = null;
+      if (employeeId != null) {
+        try {
+          const r = await c.env.DB.prepare(
+            "SELECT start_time, end_time FROM employee_schedules WHERE employee_id = ? AND day_of_week = ? AND is_active = 1"
+          )
+            .bind(employeeId, dayOfWeek)
+            .all<{ start_time: string; end_time: string }>();
+          schedules = r.results?.length ? r.results : null;
+        } catch {
+          schedules = null;
+        }
+        if (!schedules || schedules.length === 0) continue;
+        const timeOff = await c.env.DB.prepare(
+          "SELECT 1 FROM employee_time_off WHERE employee_id = ? AND date_from <= ? AND date_to >= ?"
+        )
+          .bind(employeeId, dateStr, dateStr)
+          .first();
+        if (timeOff) continue;
+      } else {
+        try {
+          const r = await c.env.DB.prepare(
+            "SELECT * FROM availability_schedules WHERE service_id = ? AND day_of_week = ? AND is_active = 1"
+          )
+            .bind(serviceId, dayOfWeek)
+            .all();
+          schedules = r.results?.length ? (r.results as { start_time: string; end_time: string }[]) : null;
+        } catch {
+          schedules = null;
         }
       }
 
-      if (hasAvailableSlots) break;
+      if (!schedules || schedules.length === 0) {
+        continue;
+      }
+
+      let exceptions: any[] = [];
+      try {
+        const exResult = await c.env.DB.prepare(
+          `SELECT * FROM schedule_exceptions 
+           WHERE tenant_id = ? 
+           AND exception_date = ? 
+           AND is_blocked = 1
+           AND (service_id = ? OR service_id IS NULL)`
+        )
+          .bind(service.tenant_id, dateStr, serviceId)
+          .all();
+        exceptions = exResult.results || [];
+      } catch {
+        // tabla puede no existir
+      }
+
+      const isWholeDayBlocked = exceptions?.some((e: any) => !e.start_time && !e.end_time);
+      if (isWholeDayBlocked) {
+        continue;
+      }
+
+      const aptQuery =
+        employeeId != null
+          ? `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
+             FROM appointments a JOIN services s ON a.service_id = s.id
+             LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+             WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'
+             AND (a.employee_id IS NULL OR a.employee_id = ?)`
+          : `SELECT a.appointment_time, COALESCE(sv.duration_minutes, s.duration_minutes) as duration_minutes
+             FROM appointments a JOIN services s ON a.service_id = s.id
+             LEFT JOIN service_variants sv ON a.service_variant_id = sv.id
+             WHERE a.tenant_id = ? AND a.appointment_date = ? AND a.status != 'cancelled'`;
+      let appointments: any[] = [];
+      try {
+        const aptResult = await c.env.DB.prepare(aptQuery)
+          .bind(service.tenant_id, dateStr, ...(employeeId != null ? [employeeId] : []))
+          .all();
+        appointments = aptResult.results || [];
+      } catch {
+        // ignorar
+      }
+
+      let hasAvailableSlots = false;
+
+      for (const schedule of schedules as any[]) {
+        const scheduleStart = timeToMinutes(schedule.start_time);
+        const scheduleEnd = timeToMinutes(schedule.end_time);
+        const duration = durationMinutes;
+        const slotInterval = 15;
+
+        for (let slotStart = scheduleStart; slotStart + duration <= scheduleEnd; slotStart += slotInterval) {
+          const slotEnd = slotStart + duration;
+
+          const isBlocked = exceptions?.some((e: any) => {
+            if (!e.start_time) return false;
+            const exStart = timeToMinutes(e.start_time);
+            const exEnd = e.end_time ? timeToMinutes(e.end_time) : exStart + 60;
+            return timeRangesOverlap(slotStart, slotEnd, exStart, exEnd);
+          });
+
+          if (isBlocked) continue;
+
+          const hasOverlap = appointments?.some((apt: any) => {
+            const aptStart = timeToMinutes(apt.appointment_time);
+            const aptDuration = apt.duration_minutes || 60;
+            const aptEnd = aptStart + aptDuration;
+            return timeRangesOverlap(slotStart, slotEnd, aptStart, aptEnd);
+          });
+
+          if (!hasOverlap) {
+            hasAvailableSlots = true;
+            break;
+          }
+        }
+
+        if (hasAvailableSlots) break;
+      }
+
+      if (hasAvailableSlots) {
+        availableDates.push(dateStr);
+      }
     }
 
-    if (hasAvailableSlots) {
-      availableDates.push(dateStr);
-    }
+    return c.json(availableDates);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("available-dates error", err);
+    return c.json(
+      { error: "Error al obtener fechas disponibles", message: msg },
+      500
+    );
   }
-
-  return c.json(availableDates);
 });
 
 // Get available time slots for a service on a specific date

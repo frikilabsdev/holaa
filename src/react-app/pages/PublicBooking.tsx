@@ -58,6 +58,7 @@ export default function PublicBookingPage() {
   const [error, setError] = useState("");
   const [detailModalService, setDetailModalService] = useState<Service | null>(null);
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+  const [employeeSchedule, setEmployeeSchedule] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }> | null>(null);
 
   // Paso actual para el indicador visual (1–4)
   const currentStep = bookingComplete
@@ -117,6 +118,31 @@ export default function PublicBookingPage() {
       setCurrentTimePage(0);
     }
   }, [selectedService, selectedVariant, selectedEmployee, selectedDate]);
+
+  useEffect(() => {
+    if (!slug || !selectedService || selectedEmployee == null) {
+      setEmployeeSchedule(null);
+      return;
+    }
+    const abort = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/public/tenants/${slug}/services/${selectedService.id}/employees/${selectedEmployee}/schedules`,
+          { signal: abort.signal }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setEmployeeSchedule(Array.isArray(data) ? data : []);
+        } else {
+          setEmployeeSchedule([]);
+        }
+      } catch {
+        if (!abort.signal.aborted) setEmployeeSchedule([]);
+      }
+    })();
+    return () => abort.abort();
+  }, [slug, selectedService?.id, selectedEmployee]);
 
   const fetchTenantData = async () => {
     try {
@@ -179,6 +205,7 @@ export default function PublicBookingPage() {
   const fetchAvailableDates = async () => {
     if (!selectedService) return;
     setIsLoadingDates(true);
+    setError("");
     try {
       const params = new URLSearchParams();
       if (selectedVariant?.id) params.set("service_variant_id", String(selectedVariant.id));
@@ -187,10 +214,17 @@ export default function PublicBookingPage() {
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setAvailableDates(data);
+        setAvailableDates(Array.isArray(data) ? data : []);
+      } else {
+        const body = await response.json().catch(() => ({}));
+        const msg = body?.message || body?.error || `Error ${response.status} al cargar fechas`;
+        setError(msg);
+        setAvailableDates([]);
       }
-    } catch (error) {
-      console.error("Error al cargar fechas disponibles:", error);
+    } catch (err) {
+      console.error("Error al cargar fechas disponibles:", err);
+      setError("No se pudieron cargar las fechas. Intenta de nuevo.");
+      setAvailableDates([]);
     } finally {
       setIsLoadingDates(false);
     }
@@ -870,6 +904,31 @@ export default function PublicBookingPage() {
               </div>
             )}
 
+            {selectedEmployee != null && (
+              <div className="mb-6 p-3 rounded-xl border text-sm" style={{ borderColor: custom?.card_border_color || "#e5e7eb", backgroundColor: `${primaryColor}08`, color: custom?.text_color || "#374151" }}>
+                <span className="font-semibold" style={{ color: custom?.service_title_color || "#111827" }}>
+                  Horario de {employees.find((e) => e.id === selectedEmployee)?.name ?? "empleado"}:
+                </span>{" "}
+                {employeeSchedule === null ? (
+                  <span className="opacity-70">Cargando…</span>
+                ) : employeeSchedule.length === 0 ? (
+                  <span className="opacity-70">Sin horarios configurados</span>
+                ) : (
+                  <span>
+                    {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((dayName, dayOfWeek) => {
+                      const slots = employeeSchedule.filter((s) => s.day_of_week === dayOfWeek);
+                      if (slots.length === 0) return null;
+                      return (
+                        <span key={dayOfWeek} className="inline-block mr-3 mt-1">
+                          {dayName} {slots.map((s) => `${s.start_time}–${s.end_time}`).join(", ")}
+                        </span>
+                      );
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
+
             <h2 className="text-xl font-bold mb-4" style={{ color: custom?.service_title_color || "#111827" }}>
               Selecciona la fecha
             </h2>
@@ -883,9 +942,12 @@ export default function PublicBookingPage() {
                 <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
                 <p className="text-slate-700 font-medium">
                   No hay fechas disponibles para este servicio
+                  {selectedEmployee != null && " con el empleado elegido"}
                 </p>
                 <p className="text-sm text-slate-600 mt-1">
-                  Por favor, selecciona otro servicio
+                  {selectedEmployee != null
+                    ? "Este empleado puede no tener horarios configurados, o no hay huecos en los próximos 30 días. Prueba con «Cualquiera» u otro empleado."
+                    : "Por favor, selecciona otro servicio"}
                 </p>
               </div>
             ) : (
