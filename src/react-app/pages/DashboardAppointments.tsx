@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/react-app/contexts/AuthContext";
 import {
   Calendar,
@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Download,
   CreditCard,
+  Bell
 } from "lucide-react";
 
 interface Appointment {
@@ -33,7 +34,29 @@ interface Appointment {
   payment_method: string | null;
   created_at: string;
   updated_at: string;
+  whatsapp_url?: string | null;
 }
+
+// Simple Toast Notification Component
+const ToastNotification = ({ message, onClose }: { message: string; onClose: () => void }) => (
+  <div className="fixed top-4 right-4 z-50 animate-fade-in-down">
+    <div className="bg-white rounded-2xl shadow-2xl border border-blue-100 p-4 flex items-start gap-4 max-w-sm ring-1 ring-black/5">
+      <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 rounded-full shadow-lg shadow-blue-500/30">
+        <Bell className="w-5 h-5 text-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="font-bold text-slate-900 text-sm">Nueva Cita Pendiente</h4>
+        <p className="text-slate-600 text-sm mt-1 leading-snug">{message}</p>
+      </div>
+      <button
+        onClick={onClose}
+        className="text-slate-400 hover:text-slate-600 transition-colors bg-transparent p-1 -mr-2 -mt-2 rounded-full hover:bg-slate-50"
+      >
+        <XCircle className="w-5 h-5" />
+      </button>
+    </div>
+  </div>
+);
 
 export default function DashboardAppointmentsPage() {
   const { user } = useAuth();
@@ -42,51 +65,103 @@ export default function DashboardAppointmentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Uncancel Modal State
   const [showUncancelModal, setShowUncancelModal] = useState(false);
   const [uncancelAppointmentId, setUncancelAppointmentId] = useState<number | null>(null);
   const [uncancelReason, setUncancelReason] = useState("");
+
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Notification System
+  const [notification, setNotification] = useState<string | null>(null);
+  const knownPendingIdsRef = useRef<Set<number>>(new Set());
+  const isFirstLoadRef = useRef(true);
+
+  // Sound effect ref (optional, but good for UX)
+  const notificationSound = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
+    // Initialize sound
+    notificationSound.current = new Audio('/notification.mp3'); // Assuming a sound file exists or fails silently
+
     if (user) {
       fetchAppointments();
+      // Polling every 15 seconds for snappier notifications
+      const interval = setInterval(fetchAppointments, 15000);
+      return () => clearInterval(interval);
     }
   }, [user]);
 
   useEffect(() => {
-    if (statusFilter === "all") {
-      setFilteredAppointments(appointments);
-    } else {
-      setFilteredAppointments(
-        appointments.filter((apt) => apt.status === statusFilter)
-      );
-    }
-    // Reset to first page when filter changes
+    filterAppointments();
     setCurrentPage(1);
   }, [statusFilter, appointments]);
 
+  const filterAppointments = () => {
+    if (statusFilter === "all") {
+      setFilteredAppointments(appointments);
+    } else {
+      setFilteredAppointments(appointments.filter((apt) => apt.status === statusFilter));
+    }
+  };
+
   const fetchAppointments = async () => {
-    setLoadError(null);
+    // Don't clear errors on background polling to avoid flickering states
+    if (isFirstLoadRef.current) setLoadError(null);
+
     try {
       const response = await fetch("/api/appointments");
       if (response.ok) {
-        const data = await response.json();
-        setAppointments(Array.isArray(data) ? data : []);
-        setFilteredAppointments(Array.isArray(data) ? data : []);
+        const data: Appointment[] = await response.json();
+        const validData = Array.isArray(data) ? data : [];
+
+        // Handle Notifications Logic
+        const currentPending = validData.filter(a => a.status === 'pending');
+        const newPendingIds = new Set(currentPending.map(a => a.id));
+
+        // Check for NEW pending appointments (only after first load)
+        if (!isFirstLoadRef.current) {
+          const brandNew = currentPending.filter(a => !knownPendingIdsRef.current.has(a.id));
+          if (brandNew.length > 0) {
+            const latest = brandNew[0]; // Show info about the most recent one
+            const count = brandNew.length;
+            setNotification(
+              count > 1
+                ? `Tienes ${count} nuevas citas pendientes.`
+                : `Cliente: ${latest.customer_name} - ${latest.service_title}`
+            );
+
+            // Play sound
+            try { notificationSound.current?.play().catch(() => { }); } catch { }
+          }
+        } else {
+          // On first load, just populate known IDs without notifying
+          knownPendingIdsRef.current = newPendingIds;
+        }
+
+        // Update known IDs for next poll
+        // We update this every time to handle removed (confirmed/cancelled) items correctly
+        knownPendingIdsRef.current = newPendingIds;
+
+        setAppointments(validData);
+        isFirstLoadRef.current = false;
       } else {
-        const body = await response.json().catch(() => ({}));
-        const msg = body?.message || body?.error || `Error ${response.status} al cargar citas`;
-        setLoadError(msg);
-        setAppointments([]);
-        setFilteredAppointments([]);
+        if (isFirstLoadRef.current) {
+          const body = await response.json().catch(() => ({}));
+          setLoadError(body?.message || `Error ${response.status}`);
+          setAppointments([]);
+        }
       }
     } catch (err) {
       console.error("Error al cargar citas:", err);
-      setLoadError("No se pudieron cargar las citas. Intenta de nuevo.");
-      setAppointments([]);
-      setFilteredAppointments([]);
+      if (isFirstLoadRef.current) {
+        setLoadError("No se pudieron cargar las citas.");
+        setAppointments([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -106,213 +181,134 @@ export default function DashboardAppointmentsPage() {
           prev.map((apt) => (apt.id === id ? updated : apt))
         );
 
-        // Open WhatsApp if URL is provided (for confirmed or cancelled status)
         if (updated.whatsapp_url && (status === "confirmed" || status === "cancelled")) {
           window.open(updated.whatsapp_url, "_blank");
         }
 
-        // Close uncancel modal if opened
         if (status === "pending" && showUncancelModal) {
           setShowUncancelModal(false);
           setUncancelAppointmentId(null);
           setUncancelReason("");
         }
       } else {
-        const error = await response.json();
-        alert(error.error || "Error al actualizar estado");
+        alert("Error al actualizar estado");
       }
     } catch (error) {
-      console.error("Error al actualizar estado:", error);
+      console.error("Error:", error);
       alert("Error al actualizar estado");
     }
   };
 
   const handleUncancel = () => {
     if (!uncancelAppointmentId || !uncancelReason.trim()) {
-      alert("Por favor, ingresa un motivo de descancelación");
+      alert("Por favor, ingresa un motivo");
       return;
     }
     updateStatus(uncancelAppointmentId, "pending", uncancelReason);
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusConfig = (status: string) => {
     switch (status) {
       case "pending":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+        return { color: "bg-amber-100 text-amber-800 border-amber-200", icon: <AlertCircle className="w-4 h-4" />, label: "Pendiente" };
       case "confirmed":
-        return "bg-blue-100 text-blue-800 border-blue-200";
+        return { color: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: <CheckCircle className="w-4 h-4" />, label: "Confirmada" };
       case "completed":
-        return "bg-green-100 text-green-800 border-green-200";
+        return { color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: <CheckCircle className="w-4 h-4" />, label: "Completada" };
       case "cancelled":
-        return "bg-red-100 text-red-800 border-red-200";
+        return { color: "bg-rose-100 text-rose-800 border-rose-200", icon: <XCircle className="w-4 h-4" />, label: "Cancelada" };
       default:
-        return "bg-slate-100 text-slate-800 border-slate-200";
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <AlertCircle className="w-4 h-4" />;
-      case "confirmed":
-        return <CheckCircle className="w-4 h-4" />;
-      case "completed":
-        return <CheckCircle className="w-4 h-4" />;
-      case "cancelled":
-        return <XCircle className="w-4 h-4" />;
-      default:
-        return null;
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "Pendiente";
-      case "confirmed":
-        return "Confirmada";
-      case "completed":
-        return "Completada";
-      case "cancelled":
-        return "Cancelada";
-      default:
-        return status;
+        return { color: "bg-slate-100 text-slate-800 border-slate-200", icon: null, label: status };
     }
   };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + "T00:00:00");
-    return date.toLocaleDateString("es-MX", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return date.toLocaleDateString("es-MX", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   };
 
-  const groupByDate = (appointments: Appointment[]) => {
-    const groups: { [key: string]: Appointment[] } = {};
-    appointments.forEach((apt) => {
-      if (!groups[apt.appointment_date]) {
-        groups[apt.appointment_date] = [];
-      }
-      groups[apt.appointment_date].push(apt);
-    });
-    return groups;
-  };
+  // Grouping & Sorting
+  const groupedAppointments = filteredAppointments.reduce((acc, apt) => {
+    (acc[apt.appointment_date] = acc[apt.appointment_date] || []).push(apt);
+    return acc;
+  }, {} as { [key: string]: Appointment[] });
 
-  // Flatten appointments for pagination (all appointments across all dates)
-  const allAppointmentsFlat = filteredAppointments.sort((a, b) => {
-    const dateCompare = b.appointment_date.localeCompare(a.appointment_date);
-    if (dateCompare !== 0) return dateCompare;
-    return a.appointment_time.localeCompare(b.appointment_time);
-  });
+  const sortedDates = Object.keys(groupedAppointments).sort((a, b) => b.localeCompare(a));
 
-  // Calculate pagination
-  const totalPages = Math.ceil(allAppointmentsFlat.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedAppointments = allAppointmentsFlat.slice(startIndex, endIndex);
-
-  // Group paginated appointments by date
-  const paginatedGrouped = groupByDate(paginatedAppointments);
-  const sortedDates = Object.keys(paginatedGrouped).sort(
-    (a, b) => b.localeCompare(a)
+  // Pagination Logic
+  const flatList = sortedDates.flatMap(date =>
+    groupedAppointments[date].sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
   );
+
+  const totalPages = Math.ceil(flatList.length / itemsPerPage);
+  const paginatedList = flatList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // Regroup paginated items for display
+  const displayGroups = paginatedList.reduce((acc, apt) => {
+    (acc[apt.appointment_date] = acc[apt.appointment_date] || []).push(apt);
+    return acc;
+  }, {} as { [key: string]: Appointment[] });
+  const displayDates = Object.keys(displayGroups).sort((a, b) => b.localeCompare(a));
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex items-center justify-center min-h-[500px]">
+        <Loader2 className="w-10 h-10 animate-spin text-slate-300" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fade-in-up pb-12">
+      {notification && <ToastNotification message={notification} onClose={() => setNotification(null)} />}
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Citas</h1>
-          <p className="text-slate-600 mt-1">
-            Gestiona las reservas de tus clientes
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Citas</h1>
+          <p className="text-slate-500 mt-1">Gestiona y monitorea las reservas de tu negocio</p>
         </div>
       </div>
 
       {loadError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between gap-4">
-          <p className="text-red-800 text-sm">{loadError}</p>
-          <button
-            type="button"
-            onClick={() => { setIsLoading(true); fetchAppointments(); }}
-            className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 whitespace-nowrap"
-          >
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 md:p-6 flex flex-col md:flex-row items-center gap-4">
+          <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+          <p className="text-red-800 text-sm flex-1">{loadError}</p>
+          <button onClick={() => { isFirstLoadRef.current = true; setIsLoading(true); fetchAppointments(); }} className="px-5 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-xl hover:bg-red-700 transition">
             Reintentar
           </button>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Total</p>
-              <p className="text-2xl font-bold text-slate-900">
-                {appointments.length}
-              </p>
+      {/* Stats Cards - Responsive Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {[
+          { label: 'Total', count: appointments.length, icon: Calendar, color: 'bg-indigo-500' },
+          { label: 'Pendientes', count: appointments.filter(a => a.status === 'pending').length, icon: AlertCircle, color: 'bg-amber-500' },
+          { label: 'Confirmadas', count: appointments.filter(a => a.status === 'confirmed').length, icon: CheckCircle, color: 'bg-emerald-500' },
+          { label: 'Canceladas', count: appointments.filter(a => a.status === 'cancelled').length, icon: XCircle, color: 'bg-slate-400' }
+        ].map((stat, idx) => (
+          <div key={idx} className="bg-white p-5 md:p-6 rounded-2xl border border-slate-100 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] hover:shadow-lg transition-all duration-300">
+            <div className="flex justify-between items-start mb-4">
+              <div className={`p-3 rounded-xl ${stat.color} bg-opacity-10`}>
+                <stat.icon className={`w-6 h-6 ${stat.color.replace('bg-', 'text-')}`} />
+              </div>
+              <span className="text-3xl font-bold text-slate-900">{stat.count}</span>
             </div>
-            <Calendar className="w-8 h-8 text-slate-400" />
+            <p className="text-sm font-medium text-slate-500 uppercase tracking-widest">{stat.label}</p>
           </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Pendientes</p>
-              <p className="text-2xl font-bold text-yellow-600">
-                {appointments.filter((a) => a.status === "pending").length}
-              </p>
-            </div>
-            <AlertCircle className="w-8 h-8 text-yellow-400" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Confirmadas</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {appointments.filter((a) => a.status === "confirmed").length}
-              </p>
-            </div>
-            <CheckCircle className="w-8 h-8 text-blue-400" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Completadas</p>
-              <p className="text-2xl font-bold text-green-600">
-                {appointments.filter((a) => a.status === "completed").length}
-              </p>
-            </div>
-            <CheckCircle className="w-8 h-8 text-green-400" />
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Filter and Pagination Controls */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <Filter className="w-5 h-5 text-slate-400" />
+      {/* Controls Bar */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <Filter className="w-5 h-5 text-slate-400" />
+          <div className="relative w-full md:w-64">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
+              className="w-full appearance-none pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer hover:border-slate-300 transition-colors"
             >
               <option value="all">Todas las citas</option>
               <option value="pending">Pendientes</option>
@@ -320,397 +316,237 @@ export default function DashboardAppointmentsPage() {
               <option value="completed">Completadas</option>
               <option value="cancelled">Canceladas</option>
             </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
+        </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-sm text-slate-600">Mostrar:</label>
-              <select
-                value={itemsPerPage}
-                onChange={(e) => {
-                  setItemsPerPage(parseInt(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-sm"
-              >
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={15}>15</option>
-                <option value={20}>20</option>
-              </select>
-              <span className="text-sm text-slate-600">por página</span>
-            </div>
-          </div>
+        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+          <span className="text-sm text-slate-500 hidden sm:inline">Resultados por página:</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => { setItemsPerPage(parseInt(e.target.value)); setCurrentPage(1); }}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+          >
+            {[5, 10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
       </div>
 
       {/* Appointments List */}
-      {filteredAppointments.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">
-            No hay citas
-          </h3>
-          <p className="text-slate-600">
-            {statusFilter === "all"
-              ? "Aún no tienes citas registradas"
-              : `No hay citas con estado: ${getStatusLabel(statusFilter)}`}
-          </p>
+      {paginatedList.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-16 text-center">
+          <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Calendar className="w-10 h-10 text-slate-300" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">No se encontraron citas</h3>
+          <p className="text-slate-500">Intenta cambiar los filtros o espera nuevas reservas.</p>
+          {statusFilter !== 'all' && (
+            <button onClick={() => setStatusFilter('all')} className="mt-6 text-indigo-600 font-semibold hover:underline">
+              Ver todas las citas
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-8">
-          {sortedDates.map((date) => {
-            const dateAppointments = paginatedGrouped[date];
-            return (
-              <div key={date}>
-                <h2 className="text-lg font-bold text-slate-900 mb-4 capitalize">
-                  {formatDate(date)}
-                </h2>
-                <div className="space-y-3">
-                  {dateAppointments
-                    .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
-                    .map((appointment) => (
-                      <div
-                        key={appointment.id}
-                        className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
-                      >
-                        {/* Header */}
-                        <div className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-3 mb-2">
-                                <span className="text-lg font-bold text-slate-900">
-                                  {appointment.appointment_time}
-                                </span>
-                                <span
-                                  className={`px-3 py-1 rounded-full text-xs font-semibold border flex items-center space-x-1 ${getStatusColor(appointment.status)}`}
-                                >
-                                  {getStatusIcon(appointment.status)}
-                                  <span>{getStatusLabel(appointment.status)}</span>
-                                </span>
-                              </div>
-                              <p className="text-sm font-semibold text-slate-700">
-                                {appointment.service_title}
-                              </p>
-                            </div>
+          {displayDates.map(date => (
+            <div key={date}>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="w-1.5 h-6 bg-slate-200 rounded-full"></span>
+                <h3 className="text-base font-bold text-slate-600 uppercase tracking-widest">{formatDate(date)}</h3>
+              </div>
 
-                            <button
-                              onClick={() =>
-                                setExpandedId(
-                                  expandedId === appointment.id ? null : appointment.id
-                                )
-                              }
-                              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                            >
-                              <ChevronDown
-                                className={`w-5 h-5 text-slate-600 transition-transform ${
-                                  expandedId === appointment.id ? "rotate-180" : ""
-                                }`}
-                              />
-                            </button>
-                          </div>
+              <div className="grid grid-cols-1 gap-4">
+                {displayGroups[date].map(apt => {
+                  const statusConfig = getStatusConfig(apt.status);
+                  const isExpanded = expandedId === apt.id;
 
-                          <div className="flex items-center space-x-4 text-sm text-slate-600">
-                            <div className="flex items-center space-x-2">
-                              <User className="w-4 h-4" />
-                              <span>{appointment.customer_name}</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Phone className="w-4 h-4" />
-                              <a
-                                href={`tel:${appointment.customer_phone}`}
-                                className="hover:text-blue-600"
-                              >
-                                {appointment.customer_phone}
-                              </a>
-                            </div>
+                  return (
+                    <div
+                      key={apt.id}
+                      className={`bg-white rounded-2xl border transition-all duration-300 overflow-hidden ${isExpanded
+                        ? 'border-indigo-500 shadow-xl shadow-indigo-500/10 ring-1 ring-indigo-500/20'
+                        : 'border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md'
+                        }`}
+                    >
+                      {/* Card Header */}
+                      <div className="p-4 md:p-5 flex flex-col md:flex-row items-start md:items-center gap-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : apt.id)}>
+                        {/* Time & Status */}
+                        <div className="flex items-center gap-4 min-w-[120px]">
+                          <div className="bg-slate-50 px-3 py-2 md:py-3 rounded-xl text-center border border-slate-100 min-w-[80px]">
+                            <span className="block text-lg font-black text-slate-900">{apt.appointment_time}</span>
                           </div>
                         </div>
 
-                        {/* Expanded Details */}
-                        {expandedId === appointment.id && (
-                          <div className="border-t border-slate-200 bg-slate-50 p-4 space-y-4">
-                            {appointment.customer_email && (
-                              <div className="flex items-center space-x-2 text-sm text-slate-600">
-                                <Mail className="w-4 h-4" />
-                                <a
-                                  href={`mailto:${appointment.customer_email}`}
-                                  className="hover:text-blue-600"
-                                >
-                                  {appointment.customer_email}
-                                </a>
-                              </div>
-                            )}
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-slate-900 text-lg mb-1 truncate">{apt.service_title}</h4>
+                          <div className="flex items-center gap-2 text-slate-500 text-sm">
+                            <User className="w-4 h-4 flex-shrink-0" />
+                            <span className="font-medium truncate">{apt.customer_name}</span>
+                          </div>
+                        </div>
 
-                            {appointment.payment_method && (
-                              <div className="bg-white rounded-lg p-3 border border-slate-200">
-                                <div className="flex items-start space-x-2">
-                                  <CreditCard className="w-4 h-4 text-slate-400 mt-0.5" />
-                                  <div>
-                                    <p className="text-xs font-semibold text-slate-700 mb-1">
-                                      Método de Pago
-                                    </p>
-                                    <p className="text-sm text-slate-600">
-                                      {appointment.payment_method === "transfer" && "💳 Transferencia Bancaria"}
-                                      {appointment.payment_method === "cash" && "💵 Efectivo"}
-                                      {appointment.payment_method === "card" && "💳 Tarjeta de Crédito/Débito"}
-                                      {!["transfer", "cash", "card"].includes(appointment.payment_method || "") && 
-                                        appointment.payment_method}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                        {/* Status Badge (Desktop right, Mobile below) */}
+                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 border self-start md:self-center ${statusConfig.color}`}>
+                          {statusConfig.icon}
+                          {statusConfig.label}
+                        </div>
 
-                            {appointment.notes && (
-                              <div className="bg-white rounded-lg p-3 border border-slate-200">
-                                <div className="flex items-start space-x-2">
-                                  <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5" />
-                                  <div>
-                                    <p className="text-xs font-semibold text-slate-700 mb-1">
-                                      Notas
-                                    </p>
-                                    <p className="text-sm text-slate-600">
-                                      {appointment.notes}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                        <div className="hidden md:block">
+                          <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
 
-                            {appointment.status === "confirmed" && (
-                              <div className="bg-white rounded-lg p-3 border border-slate-200">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center space-x-2">
-                                    <Calendar className="w-4 h-4 text-blue-600" />
-                                    <div>
-                                      <p className="text-xs font-semibold text-slate-700 mb-1">
-                                        Archivo de Calendario
-                                      </p>
-                                      <p className="text-xs text-slate-600">
-                                        Descarga el archivo .ics para agregar la cita al calendario del cliente
-                                      </p>
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div className="px-5 pb-6 pt-0 border-t border-slate-100 mt-2 bg-slate-50/30">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6">
+                            {/* Left Column: Details */}
+                            <div className="space-y-6">
+                              <div className="space-y-3">
+                                <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Contacto del Cliente</h5>
+                                <div className="grid grid-cols-1 gap-2">
+                                  <a href={`tel:${apt.customer_phone}`} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-600 transition-colors group">
+                                    <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                                      <Phone className="w-4 h-4 text-slate-500 group-hover:text-indigo-500" />
                                     </div>
-                                  </div>
-                                  <a
-                                    href={`/api/appointments/${appointment.id}/ics`}
-                                    download
-                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                                  >
-                                    <Download className="w-3 h-3" />
-                                    <span>Descargar .ics</span>
+                                    {apt.customer_phone}
                                   </a>
+                                  {apt.customer_email && (
+                                    <a href={`mailto:${apt.customer_email}`} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-600 transition-colors group">
+                                      <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                                        <Mail className="w-4 h-4 text-slate-500 group-hover:text-indigo-500" />
+                                      </div>
+                                      {apt.customer_email}
+                                    </a>
+                                  )}
                                 </div>
                               </div>
-                            )}
 
-                            {/* Status Actions */}
-                            <div>
-                              {appointment.status === "completed" ? (
-                                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                                  <div className="flex items-center space-x-2">
-                                    <CheckCircle className="w-5 h-5 text-green-600" />
-                                    <p className="text-sm font-semibold text-green-900">
-                                      Cita completada - No se pueden realizar más cambios
-                                    </p>
-                                  </div>
-                                </div>
-                              ) : appointment.status === "cancelled" ? (
-                                <div>
-                                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-                                    <div className="flex items-center space-x-2 mb-2">
-                                      <XCircle className="w-5 h-5 text-red-600" />
-                                      <p className="text-sm font-semibold text-red-900">
-                                        Cita cancelada
-                                      </p>
+                              {(apt.payment_method || apt.notes) && (
+                                <div className="space-y-3">
+                                  <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Información Adicional</h5>
+                                  {apt.payment_method && (
+                                    <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 text-sm text-slate-600">
+                                      <CreditCard className="w-4 h-4 text-slate-400" />
+                                      <span>Método de pago: <span className="font-semibold text-slate-900 capitalize">{apt.payment_method === 'transfer' ? 'Transferencia' : apt.payment_method}</span></span>
                                     </div>
-                                    {appointment.notes && (
-                                      <p className="text-xs text-red-700 mt-2">
-                                        Motivo de cancelación: {appointment.notes}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      setUncancelAppointmentId(appointment.id);
-                                      setShowUncancelModal(true);
-                                    }}
-                                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                    <span>Descancelar cita</span>
-                                  </button>
+                                  )}
+                                  {apt.notes && (
+                                    <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100 text-sm text-amber-900">
+                                      <MessageSquare className="w-4 h-4 text-amber-500 mt-0.5" />
+                                      <p className="italic">"{apt.notes}"</p>
+                                    </div>
+                                  )}
                                 </div>
-                              ) : (
-                                <>
-                                  <p className="text-xs font-semibold text-slate-700 mb-2">
-                                    Cambiar estado
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {appointment.status !== "confirmed" && (
-                                      <button
-                                        onClick={() =>
-                                          updateStatus(appointment.id, "confirmed")
-                                        }
-                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                                      >
-                                        <CheckCircle className="w-4 h-4" />
-                                        <span>Confirmar</span>
-                                      </button>
-                                    )}
-
-                                    {appointment.status === "pending" || appointment.status === "confirmed" ? (
-                                      <>
-                                        <button
-                                          onClick={() =>
-                                            updateStatus(appointment.id, "completed")
-                                          }
-                                          className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-                                        >
-                                          <CheckCircle className="w-4 h-4" />
-                                          <span>Completar</span>
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            updateStatus(appointment.id, "cancelled")
-                                          }
-                                          className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
-                                        >
-                                          <XCircle className="w-4 h-4" />
-                                          <span>Cancelar</span>
-                                        </button>
-                                      </>
-                                    ) : null}
-                                  </div>
-                                </>
                               )}
                             </div>
+
+                            {/* Right Column: Actions */}
+                            <div className="space-y-6">
+                              <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gestionar Cita</h5>
+                              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                                {/* Action Buttons Logic */}
+                                {apt.status === 'pending' && (
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => updateStatus(apt.id, 'confirmed')} className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 hover:scale-[1.02] transition-all">
+                                      <CheckCircle className="w-4 h-4" /> Confirmar
+                                    </button>
+                                    <button onClick={() => updateStatus(apt.id, 'cancelled')} className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all">
+                                      <XCircle className="w-4 h-4" /> Cancelar
+                                    </button>
+                                  </div>
+                                )}
+
+                                {apt.status === 'confirmed' && (
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => updateStatus(apt.id, 'completed')} className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all">
+                                      <CheckCircle className="w-4 h-4" /> Completar
+                                    </button>
+                                    <button onClick={() => updateStatus(apt.id, 'cancelled')} className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all">
+                                      <XCircle className="w-4 h-4" /> Cancelar
+                                    </button>
+                                  </div>
+                                )}
+
+                                {apt.status === 'cancelled' && (
+                                  <button onClick={() => { setUncancelAppointmentId(apt.id); setShowUncancelModal(true); }} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">
+                                    <CheckCircle className="w-4 h-4" /> Descancelar (Reactivar)
+                                  </button>
+                                )}
+
+                                {apt.status === 'completed' && (
+                                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-3 text-emerald-800 text-sm font-medium">
+                                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                    Esta cita ha sido completada con éxito.
+                                  </div>
+                                )}
+
+                                {/* Calendar Download */}
+                                {apt.status !== 'cancelled' && (
+                                  <a href={`/api/appointments/${apt.id}/ics`} download className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all mt-2">
+                                    <Download className="w-4 h-4" /> Descargar para Calendario sin conexión
+                                  </a>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Pagination */}
-      {filteredAppointments.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-slate-600">
-              Mostrando {startIndex + 1} - {Math.min(endIndex, allAppointmentsFlat.length)} de {allAppointmentsFlat.length} citas
-            </div>
-            
-            <div className="flex items-center space-x-2">
+      {/* Pagination Controls */}
+      {paginatedList.length > 0 && totalPages > 1 && (
+        <div className="flex justify-center gap-3 mt-8">
+          <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm disabled:opacity-50 disabled:shadow-none hover:bg-slate-50 transition-all">
+            <ChevronLeft className="w-5 h-5 text-slate-600" />
+          </button>
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 shadow-sm">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
               <button
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Página anterior"
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${currentPage === page ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
               >
-                <ChevronLeft className="w-5 h-5" />
+                {page}
               </button>
-              
-              <div className="flex items-center space-x-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  // Show first page, last page, current page, and pages around current
-                  if (
-                    page === 1 ||
-                    page === totalPages ||
-                    (page >= currentPage - 1 && page <= currentPage + 1)
-                  ) {
-                    return (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          currentPage === page
-                            ? "bg-blue-600 text-white"
-                            : "border border-slate-300 hover:bg-slate-50 text-slate-700"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    );
-                  } else if (
-                    page === currentPage - 2 ||
-                    page === currentPage + 2
-                  ) {
-                    return (
-                      <span key={page} className="px-2 text-slate-400">
-                        ...
-                      </span>
-                    );
-                  }
-                  return null;
-                })}
-              </div>
-              
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Página siguiente"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
+            ))}
           </div>
+          <button onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm disabled:opacity-50 disabled:shadow-none hover:bg-slate-50 transition-all">
+            <ChevronRight className="w-5 h-5 text-slate-600" />
+          </button>
         </div>
       )}
 
       {/* Uncancel Modal */}
       {showUncancelModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 transform scale-100 transition-all">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="bg-blue-100 p-3 rounded-2xl">
+                <CheckCircle className="w-6 h-6 text-blue-600" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900">
-                Descancelar cita
-              </h3>
+              <h3 className="text-xl font-bold text-slate-900">Descancelar Cita</h3>
             </div>
+            <p className="text-slate-500 text-sm mb-6">Por favor explica por qué estás reactivando esta cita. Esta nota se guardará en el historial.</p>
 
-            <p className="text-sm text-slate-600 mb-4">
-              Para descancelar esta cita, por favor ingresa el motivo de descancelación.
-            </p>
-
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Motivo de descancelación *
-              </label>
-              <textarea
-                value={uncancelReason}
-                onChange={(e) => setUncancelReason(e.target.value)}
-                placeholder="Ej: Cliente solicitó reagendar, error en la cancelación, etc."
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none"
-                rows={4}
-                required
-              />
-            </div>
+            <textarea
+              value={uncancelReason}
+              onChange={(e) => setUncancelReason(e.target.value)}
+              placeholder="Escribe el motivo aquí..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-6 focus:ring-2 focus:ring-blue-500 outline-none resize-none min-h-[100px]"
+            />
 
             <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowUncancelModal(false);
-                  setUncancelAppointmentId(null);
-                  setUncancelReason("");
-                }}
-                className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-300 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleUncancel}
-                disabled={!uncancelReason.trim()}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Descancelar cita
-              </button>
+              <button onClick={() => setShowUncancelModal(false)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition">Cancelar</button>
+              <button onClick={handleUncancel} disabled={!uncancelReason.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 disabled:opacity-50 transition">Confirmar</button>
             </div>
           </div>
         </div>

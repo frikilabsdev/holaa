@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router";
 import {
-  Calendar,
   Clock,
   MapPin,
   Phone,
@@ -14,8 +13,11 @@ import {
   ArrowLeft,
   Search,
   User,
+  Share2
 } from "lucide-react";
 import type { Service, ServiceVariant, BusinessConfig, Tenant, PaymentMethod, SocialNetwork, VisualCustomization } from "@/shared/types";
+import { getSocialIcon } from "@/react-app/components/SocialIcons";
+import ServiceDetailModal from "@/react-app/components/ServiceDetailModal";
 
 interface PublicEmployee {
   id: number;
@@ -23,8 +25,6 @@ interface PublicEmployee {
   phone: string | null;
   email: string | null;
 }
-import { getSocialIcon } from "@/react-app/components/SocialIcons";
-import ServiceDetailModal from "@/react-app/components/ServiceDetailModal";
 
 interface TenantData {
   tenant: Tenant;
@@ -44,7 +44,6 @@ export default function PublicBookingPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState("");
-  const [currentTimePage, setCurrentTimePage] = useState(0);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [isLoadingDates, setIsLoadingDates] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -56,11 +55,9 @@ export default function PublicBookingPage() {
   const [bookingComplete, setBookingComplete] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
   const [whatsappConfirmationToCustomer, setWhatsappConfirmationToCustomer] = useState<string | null>(null);
-  const [bookingEmployeeName, setBookingEmployeeName] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [detailModalService, setDetailModalService] = useState<Service | null>(null);
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
-  const [employeeSchedule, setEmployeeSchedule] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }> | null>(null);
 
   // Paso actual para el indicador visual (1–4)
   const currentStep = bookingComplete
@@ -70,7 +67,6 @@ export default function PublicBookingPage() {
       : selectedService
         ? 2
         : 1;
-  const stepLabels = ["Servicio", "Fecha y hora", "Tus datos", "Confirmación"];
 
   const [formData, setFormData] = useState({
     customer_name: "",
@@ -105,7 +101,6 @@ export default function PublicBookingPage() {
       fetchAvailableDates();
       setSelectedDate("");
       setSelectedTime("");
-      setCurrentTimePage(0);
       setAvailableSlots([]);
       setCurrentMonth(new Date());
     }
@@ -126,34 +121,8 @@ export default function PublicBookingPage() {
     } else {
       setAvailableSlots([]);
       setSelectedTime("");
-      setCurrentTimePage(0);
     }
   }, [selectedService, selectedVariant, selectedEmployee, selectedDate]);
-
-  useEffect(() => {
-    if (!slug || !selectedService || selectedEmployee == null) {
-      setEmployeeSchedule(null);
-      return;
-    }
-    const abort = new AbortController();
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/public/tenants/${slug}/services/${selectedService.id}/employees/${selectedEmployee}/schedules`,
-          { signal: abort.signal }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setEmployeeSchedule(Array.isArray(data) ? data : []);
-        } else {
-          setEmployeeSchedule([]);
-        }
-      } catch {
-        if (!abort.signal.aborted) setEmployeeSchedule([]);
-      }
-    })();
-    return () => abort.abort();
-  }, [slug, selectedService?.id, selectedEmployee]);
 
   const fetchTenantData = async () => {
     try {
@@ -253,7 +222,6 @@ export default function PublicBookingPage() {
       if (response.ok) {
         const data = await response.json();
         setAvailableSlots(Array.isArray(data) ? data : []);
-        setCurrentTimePage(0); // Resetear a la primera página cuando cambian los slots
       } else {
         const body = await response.json().catch(() => ({}));
         const msg = body?.message || body?.error || `Error ${response.status} al cargar horarios`;
@@ -299,7 +267,6 @@ export default function PublicBookingPage() {
         setBookingComplete(true);
         setWhatsappUrl(data.whatsapp_url ?? null);
         setWhatsappConfirmationToCustomer(data.whatsapp_confirmation_to_customer ?? null);
-        setBookingEmployeeName(data.employee_name ?? null);
         // WhatsApp se abre en el useEffect al mostrar la pantalla de confirmación
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -318,7 +285,6 @@ export default function PublicBookingPage() {
     setBookingComplete(false);
     setWhatsappUrl(null);
     setWhatsappConfirmationToCustomer(null);
-    setBookingEmployeeName(null);
     setSelectedService(null);
     setSelectedVariant(null);
     setSelectedEmployee(null);
@@ -333,540 +299,512 @@ export default function PublicBookingPage() {
     setSelectedPaymentMethod(null);
   };
 
-  // Check if a date has available slots
   const hasAvailableSlots = (date: string) => {
     return availableDates.includes(date);
   };
 
-  // Get dynamic styles based on customization
-  const getBackgroundStyle = (): React.CSSProperties => {
-    const custom = tenantData?.customization;
-    if (!custom) {
-      return {};
-    }
+  // --- Dynamic Color & Style Helpers ---
+  const custom = tenantData?.customization;
+  const primaryColor = custom?.primary_color || "#3b82f6";
+  const textColor = custom?.text_color || "#1f2937";
+  const titleColor = custom?.service_title_color || "#111827";
 
+  const getBackgroundStyle = (): React.CSSProperties => {
+    if (!custom) return {};
     if (custom.background_type === "gradient") {
-      return {
-        background: `linear-gradient(135deg, ${custom.background_gradient_start || "#ffffff"} 0%, ${custom.background_gradient_end || "#ffffff"} 100%)`,
-      };
+      return { background: `linear-gradient(135deg, ${custom.background_gradient_start || "#ffffff"} 0%, ${custom.background_gradient_end || "#ffffff"} 100%)` };
     } else if (custom.background_type === "image" && custom.background_image_url) {
-      return {
-        backgroundImage: `url(${custom.background_image_url})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        backgroundAttachment: "fixed",
-      };
+      return { backgroundImage: `url(${custom.background_image_url})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" };
     } else {
-      return {
-        backgroundColor: custom.background_color || "#ffffff",
-      };
+      return { backgroundColor: custom.background_color || "#f8fafc" };
     }
   };
 
-  const custom = tenantData?.customization;
-
-  const primaryColor = custom?.primary_color || "#3b82f6";
-  const secondaryColor = custom?.secondary_color || "#8b5cf6";
-  const backgroundColor = custom?.background_color || "#ffffff";
-  const textColor = custom?.text_color || "#1f2937";
-
+  // --- Layout Wrappers ---
   if (isLoading) {
     return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
-            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
-            : custom?.background_type === "image" && custom?.background_image_url
-            ? `url(${custom.background_image_url}) center/cover no-repeat`
-            : backgroundColor,
-        }}
-      >
-        <div 
-          className="animate-spin rounded-full h-12 w-12 border-b-2"
-          style={{ borderTopColor: primaryColor }}
-        ></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     );
   }
 
   if (error && !tenantData) {
     return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
-            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
-            : custom?.background_type === "image" && custom?.background_image_url
-            ? `url(${custom.background_image_url}) center/cover no-repeat`
-            : backgroundColor,
-        }}
-      >
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">
-            Página no encontrada
-          </h1>
+      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h1 className="text-xl font-bold text-slate-900 mb-2">Algo salió mal</h1>
           <p className="text-slate-600">{error}</p>
         </div>
       </div>
     );
   }
 
-  if (bookingComplete) {
-    return (
-      <div 
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          background: custom?.background_type === "gradient" && custom?.background_gradient_start && custom?.background_gradient_end
-            ? `linear-gradient(135deg, ${custom.background_gradient_start} 0%, ${custom.background_gradient_end} 100%)`
-            : custom?.background_type === "image" && custom?.background_image_url
-            ? `url(${custom.background_image_url}) center/cover no-repeat`
-            : backgroundColor,
-        }}
-      >
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <p className="text-sm font-medium mb-2" style={{ color: primaryColor }}>
-            Paso 4 de 4: Confirmación
-          </p>
-          <div 
-            className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center shadow-lg"
-            style={{
-              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-            }}
-          >
-            <CheckCircle className="w-12 h-12 text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-slate-900 mb-3">
-            ¡Reserva Confirmada!
-          </h2>
-          <p className="text-slate-600 mb-6">
-            Tu cita ha sido agendada exitosamente
-          </p>
-
-          <div 
-            className="rounded-xl p-4 mb-4 text-left"
-            style={{
-              backgroundColor: `${primaryColor}10`,
-              borderColor: `${primaryColor}30`,
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <div className="space-y-2 text-sm" style={{ color: textColor }}>
-              <div>
-                <span className="font-semibold">Servicio:</span>{" "}
-                {selectedService?.title}
-                {selectedVariant?.name && ` (${selectedVariant.name})`}
-              </div>
-              {bookingEmployeeName && (
-                <div>
-                  <span className="font-semibold">Con:</span>{" "}
-                  {bookingEmployeeName}
-                </div>
-              )}
-              <div>
-                <span className="font-semibold">Fecha:</span>{" "}
-                {new Date(selectedDate + "T00:00:00").toLocaleDateString("es-MX", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </div>
-              <div>
-                <span className="font-semibold">Hora:</span>{" "}
-                {selectedTime}
-              </div>
-            </div>
-          </div>
-
-          {/* Siempre mostrar sección de WhatsApp: enlace al negocio o aviso */}
-          <div className="mb-4">
-            {whatsappUrl ? (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <p className="text-sm font-semibold text-green-800 mb-3 flex items-center justify-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  Envía tu reserva al negocio por WhatsApp
-                </p>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center w-full px-5 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors shadow-md"
-                >
-                  Abrir WhatsApp y enviar datos de mi cita
-                </a>
-                <p className="text-xs text-green-700 mt-2 text-center">
-                  Se abrirá WhatsApp con un mensaje listo para enviar al negocio.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="text-sm text-amber-800 text-center">
-                  El negocio no tiene WhatsApp configurado. Contacta por teléfono o asiste el día de tu cita con estos datos.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {whatsappConfirmationToCustomer && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <p className="text-sm text-blue-800 mb-2 flex items-center justify-center space-x-2">
-                <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                <span>Guardar confirmación en tu WhatsApp</span>
-              </p>
-              <a
-                href={whatsappConfirmationToCustomer}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Enviar confirmación al número que registraste
-              </a>
-            </div>
-          )}
-
-          <button
-            onClick={resetBooking}
-            className="w-full px-6 py-3 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
-            style={{
-              background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-              boxShadow: `0 10px 15px -3px ${primaryColor}30, 0 4px 6px -2px ${primaryColor}20`,
-            }}
-          >
-            Generar otra cita
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // --- Main Render ---
   return (
-    <div className="min-h-screen" style={getBackgroundStyle()}>
-      {/* Header Image (Linktree style) */}
-      {tenantData?.config.header_image_url && tenantData.config.header_image_url.trim() !== "" && (
-        <div className="relative w-full h-48 sm:h-64 overflow-hidden">
-          <img
-            src={tenantData.config.header_image_url}
-            alt="Header"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              console.error("Error al cargar imagen de cabecera:", tenantData.config.header_image_url);
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        </div>
-      )}
+    <div className="min-h-screen font-sans selection:bg-black/10 text-slate-900" style={{ ...getBackgroundStyle() }}>
+      {/* Responsive Container: Full screen on mobile, Professional Card on Desktop */}
+      <div className="mx-auto min-h-screen bg-white relative shadow-none md:shadow-2xl md:max-w-2xl lg:max-w-4xl md:my-8 lg:my-12 md:rounded-[2rem] transition-all duration-300 flex flex-col">
 
-      {/* Profile Section (Linktree style) */}
-      <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 -mt-12 sm:-mt-16 relative z-10">
-        <div 
-          className="rounded-2xl shadow-lg p-6 sm:p-8 text-center"
-          style={{
-            backgroundColor: custom?.card_background_color || "#ffffff",
-            borderColor: custom?.card_border_color || "#e5e7eb",
-            borderWidth: "1px",
-            borderStyle: "solid",
-          }}
-        >
-          {/* Profile Image */}
-          <div className="mb-4">
-            {tenantData?.config.profile_image_url && tenantData.config.profile_image_url.trim() !== "" ? (
-              <img
-                src={tenantData.config.profile_image_url}
-                alt={tenantData?.config.business_name || "Perfil"}
-                className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full mx-auto border-4 border-white shadow-xl object-cover"
-                onError={(e) => {
-                  console.error("Error al cargar imagen de perfil:", tenantData.config.profile_image_url);
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div 
-                className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full mx-auto border-4 border-white shadow-xl flex items-center justify-center"
-                style={{
-                  background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-                }}
-              >
-                <span className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
-                  {tenantData?.config.business_name?.[0]?.toUpperCase() || "R"}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Business Name */}
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2" style={{ color: custom?.service_title_color || "#111827" }}>
-                {tenantData?.config.business_name || "Reserva tu Cita"}
-              </h1>
-
-          {/* Address */}
-              {tenantData?.config.address && (
-            <p className="text-sm sm:text-base flex items-center justify-center mb-6" style={{ color: custom?.text_color || "#6b7280" }}>
-                  <MapPin className="w-4 h-4 mr-1" />
-                  {tenantData.config.address}
-                </p>
+        {/* --- Header / Hero Section --- */}
+        {!selectedService && !bookingComplete && (
+          <div className="relative">
+            {/* Cover Image */}
+            <div className="h-40 sm:h-56 md:h-64 lg:h-72 overflow-hidden bg-slate-200 md:rounded-t-[2rem]">
+              {tenantData?.config.header_image_url ? (
+                <img src={tenantData.config.header_image_url} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300"></div>
               )}
+              {/* Dark overlay for text contrast inside header if needed, but we use cards below */}
+            </div>
 
-          {/* Social Networks (Linktree style) */}
-          {tenantData?.social_networks && tenantData.social_networks.length > 0 && (
-            <div className="flex items-center justify-center space-x-3 mb-6 pb-6 border-b border-slate-200">
-              {tenantData.social_networks.map((social) => {
-                const IconComponent = getSocialIcon(social.platform);
-                return (
-                  <a
-                    key={social.id}
-                    href={social.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-100 hover:bg-blue-100 flex items-center justify-center transition-colors text-slate-600 hover:text-blue-600 group"
-                    title={social.platform}
-                  >
-                    <IconComponent className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </a>
-                );
-              })}
+            {/* Profile Content (overlapping) */}
+            <div className="px-6 -mt-12 relative z-10 mb-8">
+              <div className="flex flex-col items-center text-center">
+                <div className="p-1.5 bg-white rounded-full shadow-lg mb-3">
+                  {tenantData?.config.profile_image_url ? (
+                    <img src={tenantData.config.profile_image_url} alt="Profile" className="w-24 h-24 rounded-full object-cover border border-slate-100" />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center text-3xl font-bold text-slate-400">
+                      {tenantData?.config.business_name?.[0] || "B"}
+                    </div>
+                  )}
+                </div>
+
+                <h1 className="text-2xl font-bold tracking-tight mb-1" style={{ color: titleColor }}>
+                  {tenantData?.config.business_name}
+                </h1>
+
+                {tenantData?.config.address && (
+                  <p className="flex items-center gap-1.5 text-sm font-medium opacity-80 mb-4" style={{ color: textColor }}>
+                    <MapPin className="w-3.5 h-3.5" />
+                    {tenantData.config.address}
+                  </p>
+                )}
+
+                {/* Social Pills */}
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {tenantData?.config.phone && (
+                    <a href={`tel:${tenantData.config.phone}`} className="p-2.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  )}
+                  {tenantData?.config.whatsapp && (
+                    <a href={`https://wa.me/${tenantData.config.whatsapp.replace(/[^0-9]/g, "")}`} className="p-2.5 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-colors">
+                      <MessageCircle className="w-4 h-4" />
+                    </a>
+                  )}
+                  {tenantData?.social_networks?.map(social => {
+                    const Icon = getSocialIcon(social.platform);
+                    return (
+                      <a key={social.id} href={social.url} target="_blank" rel="noopener" className="p-2.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+                        <Icon className="w-4 h-4" />
+                      </a>
+                    );
+                  })}
+                </div>
               </div>
-          )}
-
-          {/* Contact Info */}
-          {(tenantData?.config.phone || tenantData?.config.whatsapp) && (
-            <div className="flex items-center justify-end space-x-4 pt-2">
-              {tenantData.config.phone && (
-                <a
-                  href={`tel:${tenantData.config.phone}`}
-                  className="flex items-center space-x-2 text-sm text-slate-600 hover:text-blue-600 transition-colors"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>{tenantData.config.phone}</span>
-                </a>
-              )}
-              {tenantData.config.whatsapp && (
-                <a
-                  href={`https://wa.me/${tenantData.config.whatsapp.replace(/[^0-9]/g, "")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center space-x-2 text-sm text-slate-600 hover:text-green-600 transition-colors"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>WhatsApp</span>
-                </a>
-              )}
-              </div>
-          )}
-          </div>
-        </div>
-
-      {/* Búsqueda rápida de servicios (debajo de la tarjeta del negocio) */}
-      {!selectedService && services.length > 0 && (
-        <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 pt-4">
-          <div
-            className="relative rounded-xl shadow-md overflow-hidden"
-            style={{
-              backgroundColor: custom?.card_background_color || "#ffffff",
-              borderColor: custom?.card_border_color || "#e5e7eb",
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
-              style={{ color: custom?.time_text_color || "#9ca3af" }}
-            />
-            <input
-              type="text"
-              placeholder="Buscar servicios..."
-              value={serviceSearchQuery}
-              onChange={(e) => setServiceSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3.5 text-base bg-transparent focus:outline-none placeholder-slate-400"
-              style={{
-                color: custom?.service_title_color || "#111827",
-              }}
-              aria-label="Buscar servicios"
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto px-4 py-6 sm:py-8">
-
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-            <span className="text-red-800">{error}</span>
+            </div>
           </div>
         )}
 
-        {/* Indicador de pasos (stepper) */}
-        <div className="mb-6" aria-label={`Paso ${currentStep} de 4`}>
-          <div className="flex items-center justify-center gap-1 sm:gap-2">
-            {[1, 2, 3, 4].map((step) => {
-              const isActive = step === currentStep;
-              const isDone = step < currentStep;
-              const primaryColor = custom?.primary_color || "#3b82f6";
-              return (
-                <div key={step} className="flex items-center">
-                  <div
-                    className={`flex items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                      isDone ? "opacity-90" : isActive ? "ring-2 ring-offset-2" : "opacity-50"
-                    }`}
-                    style={{
-                      width: "2rem",
-                      height: "2rem",
-                      backgroundColor: isDone || isActive ? primaryColor : (custom?.card_border_color || "#e5e7eb"),
-                      color: isDone || isActive ? "#fff" : (custom?.text_color || "#6b7280"),
-                      ...(isActive && { boxShadow: `0 0 0 2px ${primaryColor}40` }),
-                    }}
-                  >
-                    {isDone ? <CheckCircle className="w-4 h-4" /> : step}
-                  </div>
-                  <span
-                    className={`hidden sm:inline ml-1 text-xs font-medium md:text-sm ${
-                      isActive ? "font-semibold" : ""
-                    }`}
-                    style={{
-                      color: isActive ? (custom?.service_title_color || "#111827") : (custom?.text_color || "#6b7280"),
-                    }}
-                  >
-                    {stepLabels[step - 1]}
-                  </span>
-                  {step < 4 && (
-                    <div
-                      className="w-4 sm:w-8 h-0.5 mx-0.5 sm:mx-1 rounded"
-                      style={{
-                        backgroundColor: isDone ? primaryColor : (custom?.card_border_color || "#e5e7eb"),
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+        {/* --- Navigation Header (Back Button) --- */}
+        {selectedService && !bookingComplete && (
+          <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md px-4 py-3 border-b border-slate-100 flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (currentStep === 3) setSelectedTime("");
+                else if (currentStep === 2) {
+                  if (selectedDate && !selectedTime) setSelectedDate("");
+                  else setSelectedService(null);
+                }
+              }}
+              className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6 text-slate-700" />
+            </button>
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-slate-900 truncate">
+                {currentStep === 2 ? (selectedDate ? "Seleccionar Hora" : "Seleccionar Fecha") : "Tus Datos"}
+              </h2>
+              <p className="text-xs text-slate-500 truncate">
+                {selectedService.title} {selectedVariant ? `• ${selectedVariant.name}` : ""}
+              </p>
+            </div>
           </div>
-          <p className="text-center mt-2 text-sm sm:hidden" style={{ color: custom?.text_color || "#6b7280" }}>
-            Paso {currentStep} de 4
-          </p>
-        </div>
+        )}
 
-        {/* Step 1: Select Service (Linktree style cards) */}
-        {!selectedService && (
-          <div className="space-y-3">
-            <h2 className="text-xl font-bold mb-1" style={{ color: custom?.service_title_color || "#111827" }}>
-              Paso 1 de 4: Servicio
-            </h2>
-            <p className="text-sm mb-4" style={{ color: custom?.text_color || "#6b7280" }}>
-              Elige el servicio que quieres agendar
-            </p>
-            {services
-              .filter((service) => {
-                const q = serviceSearchQuery.trim().toLowerCase();
-                if (!q) return true;
-                const matchTitle = service.title.toLowerCase().includes(q);
-                const matchDesc = service.description?.toLowerCase().includes(q);
-                return matchTitle || matchDesc;
-              })
-              .map((service) => {
-              const descriptionSummary = service.description
-                ? (service.description.length > 120 ? service.description.substring(0, 120) + "..." : service.description)
-                : null;
-              
-              return (
-              <button
-                key={service.id}
-                onClick={() => setDetailModalService(service)}
-                className="w-full rounded-2xl shadow-lg p-5 sm:p-6 hover:shadow-2xl hover:scale-[1.02] transition-all text-left group relative overflow-hidden"
-                style={{
-                  backgroundColor: custom?.card_background_color || "#ffffff",
-                  borderColor: custom?.card_border_color || "#e5e7eb",
-                  borderWidth: "1px",
-                  borderStyle: "solid",
-                }}
-              >
-                {/* Gradient background on hover */}
-                <div 
-                  className="absolute inset-0 transition-all pointer-events-none opacity-0 group-hover:opacity-5"
-                  style={{
-                    background: custom ? `linear-gradient(135deg, ${custom.primary_color || "#3b82f6"} 0%, ${custom.secondary_color || "#8b5cf6"} 100%)` : "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                  }}
-                />
-                
-                <div className="relative flex items-start space-x-4">
-                  {/* Main Image (Circle) */}
-                  {service.main_image_url ? (
-                    <img
-                      src={service.main_image_url}
-                      alt={service.title}
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 flex-shrink-0"
-                      style={{ borderColor: custom?.card_border_color || "#e5e7eb" }}
-                    />
-                  ) : (
+
+        {/* --- Step 1: Services List --- */}
+        {!selectedService && !bookingComplete && (
+          <div className="px-6 pb-24 space-y-8 animate-fade-in-up">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar servicios..."
+                value={serviceSearchQuery}
+                onChange={(e) => setServiceSearchQuery(e.target.value)}
+                className="w-full pl-11 pr-4 py-3.5 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-slate-900/10 placeholder:text-slate-400 font-medium transition-all"
+              />
+            </div>
+
+            {/* Contact/Action Section used to explain flow */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-slate-900">Servicios</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {services
+                  .filter(s => {
+                    if (!serviceSearchQuery) return true;
+                    const q = serviceSearchQuery.toLowerCase();
+                    return s.title.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
+                  })
+                  .map(service => (
                     <div
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-xl sm:text-2xl"
-                      style={{
-                        backgroundColor: custom?.primary_color || "#3b82f6",
-                      }}
+                      key={service.id}
+                      onClick={() => setDetailModalService(service)}
+                      className="group bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex gap-4 items-start active:scale-[0.98]"
                     >
-                      {service.title[0]?.toUpperCase() || "S"}
-                    </div>
-                  )}
+                      {/* Service Image */}
+                      <div className="w-20 h-20 rounded-xl bg-slate-100 flex-shrink-0 overflow-hidden">
+                        {service.main_image_url ? (
+                          <img src={service.main_image_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold text-xl" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
+                            {service.title[0]}
+                          </div>
+                        )}
+                      </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 
-                        className="text-lg sm:text-xl font-bold group-hover:opacity-80 transition-opacity pr-2"
-                        style={{ color: custom?.service_title_color || "#111827" }}
-                      >
-                  {service.title}
+                      <div className="flex-1 min-w-0 py-1">
+                        <h4 className="font-bold text-slate-900 truncate mb-1">{service.title}</h4>
+                        <p className="text-sm text-slate-500 line-clamp-2 mb-2 leading-relaxed">
+                          {service.description || "Sin descripción"}
+                        </p>
+                        <div className="flex items-center gap-3 text-xs font-semibold">
+                          <span className="text-slate-900 bg-slate-100 px-2 py-1 rounded-md">
+                            {service.price ? `$${service.price}` : "Variable"}
+                          </span>
+                          {service.duration_minutes && (
+                            <span className="flex items-center gap-1 text-slate-500">
+                              <Clock className="w-3 h-3" />
+                              {service.duration_minutes} min
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-300 mt-2 flex-shrink-0" />
+                    </div>
+                  ))
+                }
+                {services.length === 0 && (
+                  <div className="text-center py-12 text-slate-400">
+                    <p>No se encontraron servicios</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- Step 2: Calendar & Time --- */}
+        {selectedService && !bookingComplete && (
+          <div className="px-5 py-6 pb-32 animate-fade-in-up">
+
+            {/* Employee Selection (Horizontal Scroll) */}
+            {employees.length > 0 && !selectedDate && (
+              <div className="mb-8">
+                <h3 className="text-sm font-bold text-slate-900 mb-3 px-1">¿Con quién?</h3>
+                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 snap-x">
+                  <button
+                    onClick={() => setSelectedEmployee(null)}
+                    className={`snap-start flex-shrink-0 px-5 py-3 rounded-2xl border font-medium text-sm transition-all whitespace-nowrap ${selectedEmployee === null
+                      ? 'bg-slate-900 text-white border-transparent shadow-lg shadow-slate-900/20'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                  >
+                    Cualquiera
+                  </button>
+                  {employees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setSelectedEmployee(emp.id)}
+                      className={`snap-start flex-shrink-0 px-5 py-3 rounded-2xl border font-medium text-sm transition-all whitespace-nowrap ${selectedEmployee === emp.id
+                        ? 'bg-slate-900 text-white border-transparent shadow-lg shadow-slate-900/20'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                    >
+                      {emp.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Calendar View */}
+            {!selectedDate && (
+              <div className="bg-white rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-slate-900 capitalize">
+                    {currentMonth.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+                  </h3>
+                  <div className="flex gap-1">
+                    <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-2 hover:bg-slate-100 rounded-full">
+                      <ChevronLeft className="w-5 h-5 text-slate-600" />
+                    </button>
+                    <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-2 hover:bg-slate-100 rounded-full">
+                      <ChevronRight className="w-5 h-5 text-slate-600" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-y-4 mb-2">
+                  {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
+                    <div key={i} className="text-center text-xs font-bold text-slate-400">{d}</div>
+                  ))}
+                  {/* Calendar generation logic reused visually */}
+                  {(() => {
+                    const year = currentMonth.getFullYear();
+                    const month = currentMonth.getMonth();
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const days = [];
+
+                    for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} />);
+
+                    const todayStr = new Date().toISOString().split('T')[0];
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const date = new Date(year, month, d);
+                      const dateStr = date.toISOString().split('T')[0];
+                      const available = hasAvailableSlots(dateStr);
+                      const isToday = dateStr === todayStr;
+
+                      days.push(
+                        <button
+                          key={d}
+                          disabled={!available}
+                          onClick={() => setSelectedDate(dateStr)}
+                          className={`w-10 h-10 mx-auto flex items-center justify-center rounded-full text-sm font-medium transition-all relative
+                                      ${available
+                              ? 'text-slate-900 hover:bg-slate-50 cursor-pointer'
+                              : 'text-slate-300 cursor-not-allowed line-through- decoration-slate-300'
+                            }
+                                      ${isToday ? 'bg-slate-100 font-bold text-slate-900' : ''}
+                                   `}
+                        >
+                          {d}
+                          {available && <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full"></span>}
+                        </button>
+                      );
+                    }
+                    return days;
+                  })()}
+                </div>
+                {isLoadingDates && <div className="text-center py-4 text-xs text-slate-400 font-medium animate-pulse">Cargando disponibilidad...</div>}
+              </div>
+            )}
+
+            {/* Time Slots View */}
+            {selectedDate && !selectedTime && (
+              <div className="animate-fade-in-up">
+                <h3 className="text-lg font-bold text-slate-900 mb-4 px-1">
+                  Horarios disponibles
+                  <span className="block text-sm font-normal text-slate-500 mt-1">
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </span>
                 </h3>
-                      <ChevronRight 
-                        className="w-5 h-5 flex-shrink-0 mt-1 transition-colors" 
-                        style={{ color: custom?.primary_color || "#6366f1" }}
+
+                {isLoadingSlots ? (
+                  <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
+                ) : availableSlots.length > 0 ? (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                    {availableSlots.map(time => (
+                      <button
+                        key={time}
+                        onClick={() => setSelectedTime(time)}
+                        className="py-3 px-2 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold text-sm shadow-sm hover:border-slate-900 hover:shadow-md transition-all focus:ring-2 focus:ring-slate-900 active:scale-95"
+                      >
+                        {time}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                    <p className="text-slate-400 font-medium">No hay horarios disponibles</p>
+                    <button onClick={() => setSelectedDate("")} className="mt-4 text-sm font-bold text-slate-900 underline">Elegir otra fecha</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: Form */}
+            {selectedTime && (
+              <div className="animate-fade-in-up">
+                <div className="bg-slate-50 rounded-2xl p-4 mb-6 flex gap-4 items-center">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-slate-900">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Resumiendo</p>
+                    <p className="text-slate-900 font-semibold leading-tight">
+                      {new Date(selectedDate + 'T00:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} • {selectedTime}
+                    </p>
+                    <p className="text-sm text-slate-600 truncate max-w-[200px]">{selectedService.title}</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <User className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+                      <input
+                        required
+                        value={formData.customer_name}
+                        onChange={e => setFormData({ ...formData, customer_name: e.target.value })}
+                        placeholder="Tu nombre completo"
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:border-slate-900 focus:ring-4 focus:ring-slate-100 transition-all font-medium placeholder:text-slate-400"
                       />
                     </div>
-                    
-                    {descriptionSummary && (
-                      <p className="text-sm mb-4 line-clamp-2" style={{ color: custom?.text_color || "#6b7280" }}>
-                        {descriptionSummary}
-                      </p>
-                    )}
-                      
-                    <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: custom?.card_border_color || "#e5e7eb" }}>
-                      <div className="flex items-center space-x-4 text-sm" style={{ color: custom?.time_text_color || "#6b7280" }}>
-                    {service.variants?.length ? (
-                      (() => {
-                        const mins = service.variants.map((v) => v.duration_minutes).filter((d): d is number => d != null);
-                        return mins.length > 0 ? (
-                          <div className="flex items-center space-x-1.5">
-                            <Clock className="w-4 h-4" />
-                            <span>{Math.min(...mins)} min</span>
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+                      <input
+                        required
+                        type="tel"
+                        value={formData.customer_phone}
+                        onChange={e => setFormData({ ...formData, customer_phone: e.target.value })}
+                        placeholder="Teléfono (WhatsApp)"
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:border-slate-900 focus:ring-4 focus:ring-slate-100 transition-all font-medium placeholder:text-slate-400"
+                      />
+                    </div>
+                    <div className="relative">
+                      <div className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 flex items-center justify-center font-serif italic font-bold">@</div>
+                      <input
+                        type="email"
+                        value={formData.customer_email}
+                        onChange={e => setFormData({ ...formData, customer_email: e.target.value })}
+                        placeholder="Email (opcional)"
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:border-slate-900 focus:ring-4 focus:ring-slate-100 transition-all font-medium placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Payment Method Selection */}
+                  {paymentMethods.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-slate-900">Método de pago</h3>
+                      <div className="grid grid-cols-1 gap-3">
+                        {paymentMethods.map(method => {
+                          const isSelected = selectedPaymentMethod?.id === method.id;
+                          return (
+                            <div
+                              key={method.id}
+                              onClick={() => setSelectedPaymentMethod(method)}
+                              className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${isSelected
+                                ? 'bg-slate-900 border-transparent text-white shadow-md'
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSelected ? 'border-white' : 'border-slate-300'}`}>
+                                  {isSelected && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
+                                </div>
+                                <span className="font-medium">
+                                  {method.method_type === 'cash' && 'Efectivo'}
+                                  {method.method_type === 'card' && 'Tarjeta (en local)'}
+                                  {method.method_type === 'transfer' && 'Transferencia'}
+                                  {!['cash', 'card', 'transfer'].includes(method.method_type) && method.method_type}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Payment Details / Notices */}
+                      {selectedPaymentMethod?.method_type === 'transfer' && (
+                        <div className="p-4 bg-blue-50 rounded-2xl text-sm text-blue-900 border border-blue-100">
+                          <p className="font-bold mb-2">Datos bancarios:</p>
+                          <div className="space-y-1 opacity-90">
+                            {selectedPaymentMethod.account_holder_name && <p>Titular: {selectedPaymentMethod.account_holder_name}</p>}
+                            {selectedPaymentMethod.account_number && <p>Cuenta: {selectedPaymentMethod.account_number}</p>}
+                            {selectedPaymentMethod.clabe && <p>CLABE: {selectedPaymentMethod.clabe}</p>}
                           </div>
-                        ) : null;
-                      })()
-                    ) : service.duration_minutes != null ? (
-                          <div className="flex items-center space-x-1.5">
-                        <Clock className="w-4 h-4" />
-                        <span>{service.duration_minutes} min</span>
-                      </div>
-                    ) : null}
-                      </div>
-                    {(service.variants?.length ? service.variants.length > 0 : service.price != null) && (
-                        <div className="font-bold text-lg" style={{ color: custom?.price_color || "#059669" }}>
-                        {service.variants?.length
-                          ? `desde $${Math.min(...service.variants.map((v) => v.price)).toFixed(2)}`
-                          : `$${service.price!.toFixed(2)}`}
-                      </div>
-                    )}
+                          <p className="mt-3 text-xs opacity-70">
+                            * Deberás enviar el comprobante por WhatsApp para confirmar.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  <textarea
+                    rows={3}
+                    value={formData.notes}
+                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="¿Algún comentario o preferencia para tu cita?"
+                    className="w-full px-4 py-3 bg-slate-50 border border-transparent rounded-2xl focus:bg-white focus:border-slate-900 focus:ring-4 focus:ring-slate-100 transition-all font-medium placeholder:text-slate-400 resize-none"
+                  />
+
+                  {/* Sticky Bottom Action Button for Mobile, Inline for Desktop */}
+                  <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 md:static md:p-0 md:bg-transparent md:border-0 z-50 md:mt-8">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full bg-slate-900 text-white font-bold text-lg py-4 rounded-2xl shadow-xl shadow-slate-900/20 active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+                      Confirmar Reserva
+                    </button>
                   </div>
-                  </div>
-                </div>
-              </button>
-            )})}
+                  {/* Spacer for sticky button */}
+                  <div className="h-20"></div>
+                </form>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Service Detail Modal */}
+        {/* --- Step 4: Success / Booking Complete --- */}
+        {bookingComplete && (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-fade-in-up">
+            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-green-200 shadow-xl">
+              <CheckCircle className="w-12 h-12 text-green-600" />
+            </div>
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">¡Reserva Lista!</h2>
+            <p className="text-slate-500 mb-8 max-w-xs mx-auto">
+              Te esperamos el <span className="text-slate-900 font-bold">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric' })}</span> a las <span className="text-slate-900 font-bold">{selectedTime}</span>.
+            </p>
+
+            <div className="w-full space-y-3 mb-8">
+              {whatsappUrl && (
+                <a href={whatsappUrl} target="_blank" rel="noopener" className="w-full flex items-center justify-center gap-2 py-4 bg-[#25D366] text-white rounded-2xl font-bold shadow-lg shadow-green-500/20 hover:scale-[1.02] transition-transform">
+                  <MessageCircle className="w-5 h-5" />
+                  Enviar confirmación por WhatsApp
+                </a>
+              )}
+              {whatsappConfirmationToCustomer && (
+                <a href={whatsappConfirmationToCustomer} target="_blank" rel="noopener" className="w-full flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold hover:bg-slate-200 transition-colors">
+                  <Share2 className="w-5 h-5" />
+                  Guardar mi comprobante
+                </a>
+              )}
+            </div>
+
+            <button onClick={resetBooking} className="text-slate-400 font-medium text-sm hover:text-slate-600 transition-colors">
+              Hacer otra reserva
+            </button>
+          </div>
+        )}
+
+        {/* Modal Logic Reuse */}
         <ServiceDetailModal
           isOpen={!!detailModalService}
           onClose={() => setDetailModalService(null)}
@@ -876,6 +814,7 @@ export default function PublicBookingPage() {
             setSelectedVariant(variant);
             setDetailModalService(null);
           }}
+          // Fix 1: custom colors prop
           customColors={custom ? {
             primary_color: custom.primary_color || undefined,
             secondary_color: custom.secondary_color || undefined,
@@ -886,768 +825,11 @@ export default function PublicBookingPage() {
             time_text_color: custom.time_text_color || undefined,
             price_color: custom.price_color || undefined,
           } : undefined}
+        // Fix 2: Remove usage of bookingEmployeeName from handleSubmit (around line 271) 
+        // and resetBooking (around line 290)
+        // To do this via Replace, I will target the specific blocks.
+
         />
-
-        {/* Step 2: Select Date and Time */}
-        {selectedService && !selectedDate && (
-          <div 
-            className="rounded-2xl shadow-xl p-6"
-            style={{
-              backgroundColor: custom?.card_background_color || "#ffffff",
-              borderColor: custom?.card_border_color || "#e5e7eb",
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <h2 className="text-xl font-bold mb-1" style={{ color: custom?.service_title_color || "#111827" }}>
-              Paso 2 de 4: Fecha y hora
-            </h2>
-            <p className="text-sm mb-4" style={{ color: custom?.text_color || "#6b7280" }}>
-              Elige el día y la hora disponibles para tu cita
-            </p>
-            <button
-              onClick={() => { setSelectedService(null); setSelectedVariant(null); setSelectedEmployee(null); }}
-              className="flex items-center space-x-2 mb-4 transition-colors"
-              style={{ 
-                color: custom?.text_color || "#6b7280",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = primaryColor;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = custom?.text_color || "#6b7280";
-              }}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Cambiar servicio</span>
-            </button>
-
-            {employees.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: custom?.service_title_color || "#111827" }}>
-                  <User className="w-4 h-4" />
-                  ¿Con qué empleado?
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedEmployee(null)}
-                    className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-colors ${
-                      selectedEmployee === null
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
-                    }`}
-                  >
-                    Cualquiera
-                  </button>
-                  {employees.map((emp) => (
-                    <button
-                      key={emp.id}
-                      type="button"
-                      onClick={() => setSelectedEmployee(emp.id)}
-                      className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-colors ${
-                        selectedEmployee === emp.id
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      {emp.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {selectedEmployee != null && (
-              <div className="mb-6 p-3 rounded-xl border text-sm" style={{ borderColor: custom?.card_border_color || "#e5e7eb", backgroundColor: `${primaryColor}08`, color: custom?.text_color || "#374151" }}>
-                <span className="font-semibold" style={{ color: custom?.service_title_color || "#111827" }}>
-                  Horario de {employees.find((e) => e.id === selectedEmployee)?.name ?? "empleado"}:
-                </span>{" "}
-                {employeeSchedule === null ? (
-                  <span className="opacity-70">Cargando…</span>
-                ) : employeeSchedule.length === 0 ? (
-                  <span className="opacity-70">Sin horarios configurados</span>
-                ) : (
-                  <span>
-                    {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((dayName, dayOfWeek) => {
-                      const slots = employeeSchedule.filter((s) => s.day_of_week === dayOfWeek);
-                      if (slots.length === 0) return null;
-                      return (
-                        <span key={dayOfWeek} className="inline-block mr-3 mt-1">
-                          {dayName} {slots.map((s) => `${s.start_time}–${s.end_time}`).join(", ")}
-                        </span>
-                      );
-                    })}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <h2 className="text-xl font-bold mb-4" style={{ color: custom?.service_title_color || "#111827" }}>
-              Selecciona la fecha
-            </h2>
-
-            {isLoadingDates ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: custom?.primary_color || "#3b82f6" }} />
-              </div>
-            ) : availableDates.length === 0 ? (
-              <div className="text-center py-12 bg-yellow-50 border border-yellow-200 rounded-xl">
-                <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-slate-700 font-medium">
-                  No hay fechas disponibles para este servicio
-                  {selectedEmployee != null && " con el empleado elegido"}
-                </p>
-                <p className="text-sm text-slate-600 mt-1">
-                  {selectedEmployee != null
-                    ? "Este empleado puede no tener horarios configurados, o no hay huecos en los próximos 30 días. Prueba con «Cualquiera» u otro empleado."
-                    : "Por favor, selecciona otro servicio"}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Calendar Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold" style={{ color: custom?.service_title_color || "#111827" }}>
-                    {currentMonth.toLocaleDateString("es-MX", { month: "long", year: "numeric" })}
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        const prevMonth = new Date(currentMonth);
-                        prevMonth.setMonth(prevMonth.getMonth() - 1);
-                        setCurrentMonth(prevMonth);
-                      }}
-                      className="p-1 rounded transition-colors"
-                      style={{
-                        color: custom?.text_color || "#6b7280",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = `${primaryColor}15`;
-                        e.currentTarget.style.color = primaryColor;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.color = custom?.text_color || "#6b7280";
-                      }}
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        const nextMonth = new Date(currentMonth);
-                        nextMonth.setMonth(nextMonth.getMonth() + 1);
-                        setCurrentMonth(nextMonth);
-                      }}
-                      className="p-1 rounded transition-colors"
-                      style={{
-                        color: custom?.text_color || "#6b7280",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = `${primaryColor}15`;
-                        e.currentTarget.style.color = primaryColor;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.color = custom?.text_color || "#6b7280";
-                      }}
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Day headers */}
-                <div className="grid grid-cols-7 gap-1 mb-2">
-                  {["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"].map((day) => (
-                    <div key={day} className="text-center text-xs font-semibold py-1" style={{ color: custom?.time_text_color || "#6b7280" }}>
-                      {day}
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="grid grid-cols-7 gap-1">
-                  {(() => {
-                    const today = new Date();
-                    const year = currentMonth.getFullYear();
-                    const month = currentMonth.getMonth();
-                    
-                    // First day of the month
-                    const firstDay = new Date(year, month, 1);
-                    const firstDayOfWeek = firstDay.getDay(); // 0 = domingo
-                    
-                    // Last day of the month
-                    const lastDay = new Date(year, month + 1, 0);
-                    const daysInMonth = lastDay.getDate();
-                    
-                    const calendarCells: (string | null)[] = [];
-                    
-                    // Add previous month's trailing days
-                    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
-                      calendarCells.push(null); // These will be empty cells
-                    }
-                    
-                    // Add current month's days - show all dates but disable past dates and dates beyond 30 days
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const date = new Date(year, month, day);
-                      const dateStr = date.toISOString().split("T")[0];
-                      calendarCells.push(dateStr);
-                    }
-                    
-                    // Fill remaining cells to complete the grid (next month's days)
-                    while (calendarCells.length % 7 !== 0) {
-                      calendarCells.push(null);
-                    }
-                    
-                    return calendarCells.map((date, index) => {
-                      if (!date) {
-                        // Empty cell for alignment or unavailable dates
-                        return <div key={`empty-${index}`} className="aspect-square" />;
-                      }
-                      
-                const dateObj = new Date(date + "T00:00:00");
-                      const daysFromToday = Math.floor((dateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                      const isPastDate = daysFromToday < 0;
-                      const isBeyond30Days = daysFromToday >= 30;
-                      const hasAvailableSlotsForDate = hasAvailableSlots(date);
-                      const isAvailable = !isPastDate && !isBeyond30Days && hasAvailableSlotsForDate;
-                      const isSelected = date === selectedDate;
-                      const isToday = date === today.toISOString().split("T")[0];
-                      
-                const primaryColor = custom?.primary_color || "#3b82f6";
-                const textColor = custom?.text_color || "#374151";
-                const backgroundColor = custom?.background_color || "#ffffff";
-                
-                // Detectar si es modo oscuro (background oscuro)
-                const isDarkMode = backgroundColor && (
-                  backgroundColor.toLowerCase().includes("#0") || 
-                  backgroundColor.toLowerCase().includes("#1") ||
-                  backgroundColor.toLowerCase().includes("#2") ||
-                  parseInt(backgroundColor.replace("#", ""), 16) < parseInt("333333", 16)
-                );
-                
-                const isSelectedStyle = isSelected ? { 
-                  backgroundColor: primaryColor, 
-                  color: "#ffffff", 
-                  border: "none" 
-                } : {};
-                
-                // Para "hoy": solo borde, sin fondo, y el texto usa el color de texto normal
-                const isTodayStyle = isToday && !isSelected ? { 
-                  border: `2px solid ${primaryColor}`, 
-                  backgroundColor: "transparent",
-                  color: textColor 
-                } : {};
-                
-                // Para fechas disponibles: usar el color de texto con contraste adecuado
-                const defaultStyle = !isSelected && !isToday && isAvailable ? { 
-                  color: textColor,
-                  border: "none",
-                  backgroundColor: "transparent"
-                } : {};
-                
-                // Estilos para fechas deshabilitadas
-                const disabledStyle = !isAvailable ? (isDarkMode ? {
-                  color: "#9ca3af",
-                  backgroundColor: "rgba(156, 163, 175, 0.1)",
-                  border: "none"
-                } : {
-                  color: "#d1d5db",
-                  backgroundColor: "#f3f4f6",
-                  border: "none"
-                }) : {};
-                
-                return (
-                  <button
-                    key={date}
-                          onClick={() => isAvailable && setSelectedDate(date)}
-                          disabled={!isAvailable}
-                          className={`aspect-square flex items-center justify-center text-sm font-medium transition-all rounded-full ${
-                            isAvailable
-                              ? "hover:opacity-80 cursor-pointer"
-                              : "opacity-60 cursor-not-allowed line-through"
-                          }`}
-                          style={{
-                            ...isSelectedStyle,
-                            ...isTodayStyle,
-                            ...defaultStyle,
-                            ...disabledStyle,
-                          }}
-                        >
-                      {dateObj.getDate()}
-                  </button>
-                );
-                    });
-                  })()}
-            </div>
-                {availableDates.length < 30 && (
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-sm text-blue-800">
-                      <AlertCircle className="w-4 h-4 inline mr-1" />
-                      Solo se muestran las fechas con horarios disponibles
-                    </p>
-            </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Time slots (sigue siendo Paso 2) */}
-        {selectedService && selectedDate && !selectedTime && (
-          <div 
-            className="rounded-2xl shadow-xl p-6"
-            style={{
-              backgroundColor: custom?.card_background_color || "#ffffff",
-              borderColor: custom?.card_border_color || "#e5e7eb",
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <button
-              onClick={() => setSelectedDate("")}
-              className="flex items-center space-x-2 mb-4 transition-colors"
-              style={{ 
-                color: custom?.text_color || "#6b7280",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = primaryColor;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = custom?.text_color || "#6b7280";
-              }}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Cambiar fecha</span>
-            </button>
-
-            <h2 className="text-xl font-bold mb-4" style={{ color: custom?.service_title_color || "#111827" }}>
-              Selecciona la hora
-            </h2>
-
-            {isLoadingSlots ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: custom?.primary_color || "#3b82f6" }} />
-              </div>
-            ) : availableSlots.length === 0 ? (
-              <div className="text-center py-12 bg-yellow-50 border border-yellow-200 rounded-xl">
-                <Calendar className="w-12 h-12 text-yellow-600 mx-auto mb-3" />
-                <p className="text-slate-700 font-medium mb-1">
-                  No hay horarios disponibles para esta fecha
-                </p>
-                <p className="text-sm text-slate-600">
-                  Por favor, selecciona otra fecha
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Paginación de slots: 16 por página (4x4) */}
-                {(() => {
-                  const SLOTS_PER_PAGE = 16; // 4 filas x 4 columnas
-                  const totalPages = Math.ceil(availableSlots.length / SLOTS_PER_PAGE);
-                  const startIndex = currentTimePage * SLOTS_PER_PAGE;
-                  const endIndex = startIndex + SLOTS_PER_PAGE;
-                  const currentSlots = availableSlots.slice(startIndex, endIndex);
-                  const primaryColor = custom?.primary_color || "#3b82f6";
-
-                  return (
-                    <>
-                      <div className="grid grid-cols-4 gap-3 mb-4">
-                        {currentSlots.map((time) => {
-                          const isSelected = time === selectedTime;
-                          return (
-                  <button
-                    key={time}
-                    onClick={() => setSelectedTime(time)}
-                              className="p-3 rounded-xl border-2 transition-all text-center font-semibold"
-                              style={{
-                                borderColor: isSelected ? primaryColor : (custom?.card_border_color || "#e5e7eb"),
-                                backgroundColor: isSelected ? `${primaryColor}15` : "transparent",
-                                color: isSelected ? primaryColor : (custom?.text_color || "#111827"),
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.borderColor = primaryColor;
-                                  e.currentTarget.style.backgroundColor = `${primaryColor}10`;
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.borderColor = custom?.card_border_color || "#e5e7eb";
-                                  e.currentTarget.style.backgroundColor = "transparent";
-                                }
-                              }}
-                  >
-                    {time}
-                  </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Navegación de páginas */}
-                      {totalPages > 1 && (
-                        <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: custom?.card_border_color || "#e5e7eb" }}>
-                          <button
-                            onClick={() => setCurrentTimePage(Math.max(0, currentTimePage - 1))}
-                            disabled={currentTimePage === 0}
-                            className="flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{
-                              borderColor: currentTimePage === 0 ? (custom?.card_border_color || "#e5e7eb") : primaryColor,
-                              color: currentTimePage === 0 ? (custom?.text_color || "#6b7280") : primaryColor,
-                            }}
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                            <span>Ant</span>
-                          </button>
-
-                          <span className="text-sm" style={{ color: custom?.text_color || "#6b7280" }}>
-                            pag {currentTimePage + 1} de {totalPages}
-                          </span>
-
-                          <button
-                            onClick={() => setCurrentTimePage(Math.min(totalPages - 1, currentTimePage + 1))}
-                            disabled={currentTimePage === totalPages - 1}
-                            className="flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{
-                              borderColor: currentTimePage === totalPages - 1 ? (custom?.card_border_color || "#e5e7eb") : primaryColor,
-                              color: currentTimePage === totalPages - 1 ? (custom?.text_color || "#6b7280") : primaryColor,
-                            }}
-                          >
-                            <span>Sig</span>
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-              </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Customer Information */}
-        {selectedService && selectedDate && selectedTime && (
-          <div 
-            className="rounded-2xl shadow-xl p-6"
-            style={{
-              backgroundColor: custom?.card_background_color || "#ffffff",
-              borderColor: custom?.card_border_color || "#e5e7eb",
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <h2 className="text-xl font-bold mb-1" style={{ color: custom?.service_title_color || "#111827" }}>
-              Paso 3 de 4: Tus datos
-            </h2>
-            <p className="text-sm mb-4" style={{ color: custom?.text_color || "#6b7280" }}>
-              Datos de contacto para confirmar tu cita
-            </p>
-            <button
-              onClick={() => setSelectedTime("")}
-              className="flex items-center space-x-2 mb-4 transition-colors"
-              style={{ 
-                color: custom?.text_color || "#6b7280",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = primaryColor;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = custom?.text_color || "#6b7280";
-              }}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Cambiar hora</span>
-            </button>
-
-            <h3 className="text-lg font-bold mb-4" style={{ color: custom?.service_title_color || "#111827" }}>
-              Completa tus datos
-            </h3>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Estilos dinámicos para placeholders y selects */}
-              <style>{`
-                input::placeholder,
-                textarea::placeholder {
-                  color: ${custom?.text_color ? `${custom.text_color}99` : "#6b7280"} !important;
-                  opacity: 0.7 !important;
-                }
-                select option {
-                  background-color: ${custom?.card_background_color || "#ffffff"} !important;
-                  color: ${custom?.text_color || "#111827"} !important;
-                }
-              `}</style>
-              <div>
-                <label 
-                  className="block text-sm font-semibold mb-2"
-                  style={{ color: custom?.text_color || "#374151" }}
-                >
-                  Nombre completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.customer_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer_name: e.target.value })
-                  }
-                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
-                  style={{
-                    borderColor: custom?.card_border_color || "#d1d5db",
-                    backgroundColor: custom?.card_background_color || "#ffffff",
-                    color: custom?.text_color || "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = primaryColor;
-                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  placeholder="Juan Pérez"
-                />
-              </div>
-
-              <div>
-                <label 
-                  className="block text-sm font-semibold mb-2"
-                  style={{ color: custom?.text_color || "#374151" }}
-                >
-                  Teléfono / WhatsApp *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.customer_phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer_phone: e.target.value })
-                  }
-                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
-                  style={{
-                    borderColor: custom?.card_border_color || "#d1d5db",
-                    backgroundColor: custom?.card_background_color || "#ffffff",
-                    color: custom?.text_color || "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = primaryColor;
-                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  placeholder="+52 55 1234 5678"
-                />
-              </div>
-
-              <div>
-                <label 
-                  className="block text-sm font-semibold mb-2"
-                  style={{ color: custom?.text_color || "#374151" }}
-                >
-                  Email (opcional)
-                </label>
-                <input
-                  type="email"
-                  value={formData.customer_email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customer_email: e.target.value })
-                  }
-                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
-                  style={{
-                    borderColor: custom?.card_border_color || "#d1d5db",
-                    backgroundColor: custom?.card_background_color || "#ffffff",
-                    color: custom?.text_color || "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = primaryColor;
-                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  placeholder="correo@ejemplo.com"
-                />
-              </div>
-
-              {/* Payment Method Selection */}
-              {paymentMethods.length > 0 && (
-                <div>
-                  <label 
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: custom?.text_color || "#374151" }}
-                  >
-                    Método de pago *
-                  </label>
-                  <select
-                    required
-                    value={selectedPaymentMethod?.id || ""}
-                    onChange={(e) => {
-                      const methodId = e.target.value;
-                      if (methodId === "") {
-                        setSelectedPaymentMethod(null);
-                      } else {
-                        const method = paymentMethods.find(
-                          (m) => m.id === parseInt(methodId)
-                        );
-                        setSelectedPaymentMethod(method || null);
-                      }
-                    }}
-                    className="w-full px-4 py-3 rounded-xl border outline-none transition-all"
-                    style={{
-                      borderColor: custom?.card_border_color || "#d1d5db",
-                      backgroundColor: custom?.card_background_color || "#ffffff",
-                      color: custom?.text_color || "#111827",
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = primaryColor;
-                      e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  >
-                    <option value="">-- Selecciona un método de pago --</option>
-                    {paymentMethods.map((method) => (
-                      <option key={method.id} value={method.id}>
-                        {method.method_type === "transfer" && "Transferencia Bancaria"}
-                        {method.method_type === "cash" && "Efectivo"}
-                        {method.method_type === "card" && "Tarjeta de Crédito/Débito"}
-                        {!["transfer", "cash", "card"].includes(method.method_type) && method.method_type}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Payment Method Specific Messages */}
-                  {selectedPaymentMethod?.method_type === "transfer" && (
-                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                      <h4 className="font-semibold text-blue-900 mb-3">Datos para Transferencia Bancaria</h4>
-                      <div className="space-y-2 text-sm text-blue-800">
-                        {selectedPaymentMethod.account_holder_name && (
-                          <div>
-                            <span className="font-semibold">Titular:</span>{" "}
-                            {selectedPaymentMethod.account_holder_name}
-                          </div>
-                        )}
-                        {selectedPaymentMethod.account_number && (
-                          <div>
-                            <span className="font-semibold">Número de cuenta:</span>{" "}
-                            {selectedPaymentMethod.account_number}
-                          </div>
-                        )}
-                        {selectedPaymentMethod.clabe && (
-                          <div>
-                            <span className="font-semibold">CLABE:</span>{" "}
-                            {selectedPaymentMethod.clabe}
-                          </div>
-                        )}
-                        {selectedPaymentMethod.card_number && (
-                          <div>
-                            <span className="font-semibold">Tarjeta:</span>{" "}
-                            {selectedPaymentMethod.card_number}
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800 flex items-start">
-                          <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                          <span>
-                            <strong>Importante:</strong> Para confirmar tu reserva, por favor envía el comprobante de pago al número de WhatsApp del negocio. Tu cita quedará pendiente hasta recibir la confirmación del pago.
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedPaymentMethod?.method_type === "cash" && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                      <div className="flex items-start space-x-3">
-                        <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-green-900 mb-2">Pago en Efectivo</h4>
-                          <p className="text-sm text-green-800">
-                            El pago se realizará directamente al momento de tu cita. Tu reserva ha sido confirmada y te esperamos en la fecha y hora seleccionadas.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedPaymentMethod?.method_type === "card" && (
-                    <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-xl">
-                      <div className="flex items-start space-x-3">
-                        <AlertCircle className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-purple-900 mb-2">Pago con Tarjeta</h4>
-                          <p className="text-sm text-purple-800">
-                            El pago se realizará en el establecimiento al momento de tu cita usando tu tarjeta de crédito o débito. Tu reserva ha sido confirmada.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label 
-                  className="block text-sm font-semibold mb-2"
-                  style={{ color: custom?.text_color || "#374151" }}
-                >
-                  Notas adicionales (opcional)
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-xl border outline-none transition-all resize-none"
-                  style={{
-                    borderColor: custom?.card_border_color || "#d1d5db",
-                    backgroundColor: custom?.card_background_color || "#ffffff",
-                    color: custom?.text_color || "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = primaryColor;
-                    e.currentTarget.style.boxShadow = `0 0 0 3px ${primaryColor}20`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = custom?.card_border_color || "#d1d5db";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  placeholder="Alguna preferencia o comentario..."
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full px-6 py-4 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                style={{
-                  background: custom ? `linear-gradient(135deg, ${custom.primary_color || "#3b82f6"} 0%, ${custom.secondary_color || "#8b5cf6"} 100%)` : "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                  boxShadow: custom ? `0 10px 15px -3px ${custom.primary_color || "#3b82f6"}30, 0 4px 6px -2px ${custom.primary_color || "#3b82f6"}20` : undefined,
-                }}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Procesando...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    <span>Confirmar Reserva</span>
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-        )}
-
       </div>
     </div>
   );

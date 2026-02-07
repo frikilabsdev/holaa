@@ -86,7 +86,7 @@ export default function DashboardSocialPage() {
       if (response.ok) {
         const data = await response.json();
         setSocialNetworks(data);
-        
+
         // Initialize form data
         const initialFormData: { [key: number]: { url: string; is_active: boolean } } = {};
         data.forEach((network: SocialNetwork) => {
@@ -205,19 +205,22 @@ export default function DashboardSocialPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-600 border-t-transparent"></div>
       </div>
     );
   }
 
   if (tenants.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-12 text-center">
-          <h2 className="text-2xl font-bold text-slate-900 mb-4">
+      <div className="max-w-4xl mx-auto py-12 animate-fade-in-up">
+        <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-12 text-center">
+          <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Globe className="w-10 h-10 text-slate-300" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">
             No tienes negocios creados
           </h2>
-          <p className="text-slate-600 mb-6">
+          <p className="text-slate-500 mb-6">
             Crea un negocio primero para poder agregar redes sociales
           </p>
         </div>
@@ -226,28 +229,30 @@ export default function DashboardSocialPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 px-4 sm:px-6">
+    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in-up pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">Redes Sociales</h2>
-          <p className="text-slate-600 mt-1">
-            Gestiona las redes sociales de tu negocio
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Redes Sociales</h2>
+          <p className="text-slate-500 mt-1 text-lg">
+            Gestiona los enlaces a tus perfiles sociales públicos
           </p>
         </div>
         <div className="flex items-center gap-3">
           {tenants.length > 1 && (
-            <select
-              value={selectedTenant || ""}
-              onChange={(e) => setSelectedTenant(parseInt(e.target.value))}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-            >
-              {tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  /{tenant.slug}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectedTenant || ""}
+                onChange={(e) => setSelectedTenant(parseInt(e.target.value))}
+                className="appearance-none pl-4 pr-10 py-3 rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer shadow-sm hover:border-slate-300"
+              >
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.slug}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </div>
@@ -255,22 +260,17 @@ export default function DashboardSocialPage() {
       {/* Save status */}
       {saveStatus !== "idle" && (
         <div
-          className={`rounded-xl p-3 sm:p-4 flex items-center space-x-2 sm:space-x-3 ${
-            saveStatus === "success"
-              ? "bg-green-50 border border-green-200"
-              : "bg-red-50 border border-red-200"
-          }`}
+          className={`rounded-xl p-4 flex items-center space-x-3 shadow-sm ${saveStatus === "success"
+              ? "bg-emerald-50 border border-emerald-100 text-emerald-800"
+              : "bg-rose-50 border border-rose-100 text-rose-800"
+            }`}
         >
           {saveStatus === "success" ? (
-            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
           )}
-          <span
-            className={`text-sm sm:text-base font-medium ${
-              saveStatus === "success" ? "text-green-800" : "text-red-800"
-            }`}
-          >
+          <span className="font-medium">
             {saveStatus === "success"
               ? "Cambios guardados correctamente"
               : "Error al guardar los cambios"}
@@ -280,16 +280,18 @@ export default function DashboardSocialPage() {
 
       {/* Add new platform */}
       {availablePlatforms.length > 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-4 sm:p-6">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">
-            Agregar Red Social
+        <div className="bg-white rounded-3xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-200 p-6 sm:p-8">
+          <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-indigo-600" />
+            Agregar nueva red social
           </h3>
-          <div className="space-y-4">
+
+          <div className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Selecciona una red social
+              <label className="block text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">
+                1. Elige una plataforma
               </label>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
                 {availablePlatforms.map((platform) => {
                   const IconComponent = platform.icon;
                   const isSelected = newPlatform === platform.value;
@@ -298,40 +300,45 @@ export default function DashboardSocialPage() {
                       key={platform.value}
                       type="button"
                       onClick={() => setNewPlatform(platform.value)}
-                      className={`p-3 sm:p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center space-y-1 sm:space-y-2 ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}
+                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-3 h-28 ${isSelected
+                          ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-500/20 ring-offset-2"
+                          : "border-slate-100 hover:border-indigo-200 hover:bg-slate-50 bg-white"
+                        }`}
                     >
-                      <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 text-slate-700" />
-                      <span className="text-xs font-medium text-slate-700 text-center leading-tight">{platform.label}</span>
+                      <IconComponent className={`w-8 h-8 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      <span className={`text-xs font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-600'}`}>{platform.label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
+
             {newPlatform && (
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  URL de la red social
+              <div className="animate-fade-in-up">
+                <label className="block text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">
+                  2. Ingresa la URL de tu perfil
                 </label>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <input
-                    type="url"
-                    value={newUrl}
-                    onChange={(e) => setNewUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="flex-1 w-full px-4 py-3 sm:py-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-base sm:text-sm"
-                  />
-            <button
-              onClick={handleCreate}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                  <div className="flex-1 relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <input
+                      type="url"
+                      value={newUrl}
+                      onChange={(e) => setNewUrl(e.target.value)}
+                      placeholder={`https://www.${newPlatform}.com/tu-usuario`}
+                      className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-medium"
+                    />
+                  </div>
+                  <button
+                    onClick={handleCreate}
                     disabled={!newUrl}
-                    className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 sm:py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Agregar</span>
-            </button>
+                    className="inline-flex items-center justify-center space-x-2 px-8 py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+                  >
+                    <Save className="w-5 h-5" />
+                    <span>Guardar Red Social</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -341,59 +348,56 @@ export default function DashboardSocialPage() {
 
       {/* Social networks list */}
       {socialNetworks.length === 0 ? (
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-6 sm:p-12 text-center">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 sm:mb-6 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-            <Globe className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+        <div className="bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-indigo-50 flex items-center justify-center">
+            <Globe className="w-8 h-8 text-indigo-400" />
           </div>
-          <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2">
-            No hay redes sociales configuradas
+          <h3 className="text-xl font-bold text-slate-900 mb-2">
+            No has añadido redes sociales
           </h3>
-          <p className="text-sm sm:text-base text-slate-600">
-            Comienza agregando tus redes sociales para que tus clientes puedan
-            encontrarte
+          <p className="text-slate-500 max-w-sm mx-auto">
+            Añade tus perfiles para que tus clientes puedan seguirte y contactarte fácilmente.
           </p>
         </div>
       ) : (
-        <>
-          {/* Desktop Table View */}
-          <div className="hidden md:block bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">
+                  <th className="px-8 py-5 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Plataforma
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">
-                    URL
+                  <th className="px-8 py-5 text-left text-xs font-bold text-slate-400 uppercase tracking-wider w-1/2">
+                    URL del Perfil
                   </th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-slate-900">
+                  <th className="px-8 py-5 text-center text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Estado
                   </th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
+                  <th className="px-8 py-5 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Acciones
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {socialNetworks.map((network) => {
                   const platformInfo = getPlatformInfo(network.platform);
                   const isEditing = editingId === network.id;
+                  const IconComponent = platformInfo.icon;
 
                   return (
-                    <tr key={network.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-3">
-                            {(() => {
-                              const IconComponent = platformInfo.icon;
-                              return <IconComponent className="w-5 h-5 text-slate-700" />;
-                            })()}
-                          <span className="font-medium text-slate-900">
+                    <tr key={network.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-8 py-5">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                            <IconComponent className="w-5 h-5" />
+                          </div>
+                          <span className="font-bold text-slate-900">
                             {platformInfo.label}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-8 py-5">
                         {isEditing ? (
                           <input
                             type="url"
@@ -407,7 +411,7 @@ export default function DashboardSocialPage() {
                                 },
                               })
                             }
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-sm"
+                            className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium"
                             placeholder="https://..."
                           />
                         ) : (
@@ -415,15 +419,15 @@ export default function DashboardSocialPage() {
                             href={network.url || "#"}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 text-sm truncate max-w-md block"
+                            className="text-slate-600 hover:text-indigo-600 font-medium text-sm truncate max-w-xs block transition-colors underline decoration-slate-200 hover:decoration-indigo-300 underline-offset-4"
                           >
                             {network.url || "Sin URL"}
                           </a>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-8 py-5 text-center">
                         {isEditing ? (
-                          <label className="relative inline-flex items-center cursor-pointer">
+                          <label className="relative inline-flex items-center cursor-pointer justify-center">
                             <input
                               type="checkbox"
                               checked={formData[network.id]?.is_active || false}
@@ -438,27 +442,27 @@ export default function DashboardSocialPage() {
                               }
                               className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                           </label>
                         ) : (
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              network.is_active
-                                ? "bg-green-100 text-green-700"
-                                : "bg-slate-100 text-slate-700"
-                            }`}
+                            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5 ${network.is_active
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                                : "bg-slate-50 text-slate-500 border border-slate-100"
+                              }`}
                           >
+                            {network.is_active && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
                             {network.is_active ? "Activa" : "Inactiva"}
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end space-x-2">
+                      <td className="px-8 py-5">
+                        <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           {isEditing ? (
                             <>
                               <button
                                 onClick={() => handleUpdate(network.id)}
-                                className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                                className="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
                                 title="Guardar"
                               >
                                 <Save className="w-4 h-4" />
@@ -478,14 +482,14 @@ export default function DashboardSocialPage() {
                             <>
                               <button
                                 onClick={() => setEditingId(network.id)}
-                                className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
                                 title="Editar"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDelete(network.id)}
-                                className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors shadow-sm"
                                 title="Eliminar"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -501,136 +505,6 @@ export default function DashboardSocialPage() {
             </table>
           </div>
         </div>
-
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-4">
-            {socialNetworks.map((network) => {
-              const platformInfo = getPlatformInfo(network.platform);
-              const isEditing = editingId === network.id;
-              const IconComponent = platformInfo.icon;
-
-              return (
-                <div
-                  key={network.id}
-                  className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-4"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <IconComponent className="w-5 h-5 text-slate-700 flex-shrink-0" />
-                      <span className="font-semibold text-slate-900 truncate">
-                        {platformInfo.label}
-                      </span>
-                    </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                        network.is_active
-                          ? "bg-green-100 text-green-700"
-                          : "bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {network.is_active ? "Activa" : "Inactiva"}
-                    </span>
-                  </div>
-
-                  <div className="mb-3">
-                    {isEditing ? (
-                      <input
-                        type="url"
-                        value={formData[network.id]?.url || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            [network.id]: {
-                              ...formData[network.id],
-                              url: e.target.value,
-                            },
-                          })
-                        }
-                        className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-base"
-                        placeholder="https://..."
-                      />
-                    ) : (
-                      <a
-                        href={network.url || "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 text-sm break-all block"
-                      >
-                        {network.url || "Sin URL"}
-                      </a>
-                    )}
-                  </div>
-
-                  {isEditing && (
-                    <div className="mb-3">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData[network.id]?.is_active || false}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              [network.id]: {
-                                ...formData[network.id],
-                                is_active: e.target.checked,
-                              },
-                            })
-                          }
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        <span className="ml-3 text-sm font-medium text-slate-700">
-                          Activar/Desactivar
-                        </span>
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-200">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={() => handleUpdate(network.id)}
-                          className="flex-1 inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors"
-                        >
-                          <Save className="w-4 h-4" />
-                          <span>Guardar</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingId(null);
-                            fetchSocialNetworks();
-                          }}
-                          className="flex-1 inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300 transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                          <span>Cancelar</span>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setEditingId(network.id)}
-                          className="flex-1 inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(network.id)}
-                          className="flex-1 inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Eliminar</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
       )}
     </div>
   );

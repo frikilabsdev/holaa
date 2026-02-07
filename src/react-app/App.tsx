@@ -10,6 +10,7 @@ import DashboardSchedulesPage from "@/react-app/pages/DashboardSchedules";
 import DashboardAppointmentsPage from "@/react-app/pages/DashboardAppointments";
 import DashboardEmployeesPage from "@/react-app/pages/DashboardEmployees";
 import DashboardSettingsPage from "@/react-app/pages/DashboardSettings";
+import DashboardSocialPage from "@/react-app/pages/DashboardSocial";
 import PublicBookingPage from "@/react-app/pages/PublicBooking";
 import AdminLoginPage from "@/react-app/pages/AdminLogin";
 import AdminDashboardPage from "@/react-app/pages/AdminDashboard";
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="appointments" element={<DashboardAppointmentsPage />} />
             <Route path="employees" element={<DashboardEmployeesPage />} />
             <Route path="settings" element={<DashboardSettingsPage />} />
+            <Route path="social" element={<DashboardSocialPage />} />
           </Route>
         </Routes>
       </Router>

@@ -11,6 +11,7 @@ import {
   Briefcase,
   Clock,
   Users,
+  Share2,
 } from "lucide-react";
 
 export default function DashboardLayout() {
@@ -33,6 +34,7 @@ export default function DashboardLayout() {
     { name: "Empleados", href: "/dashboard/employees", icon: Users },
     { name: "Horarios", href: "/dashboard/schedules", icon: Clock },
     { name: "Citas", href: "/dashboard/appointments", icon: Calendar },
+    { name: "Redes Sociales", href: "/dashboard/social", icon: Share2 },
     { name: "Configuración", href: "/dashboard/settings", icon: Settings },
   ];
 
@@ -61,9 +63,8 @@ export default function DashboardLayout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white/95 backdrop-blur-xl border-r border-slate-200/60 shadow-xl transform transition-transform duration-300 lg:translate-x-0 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white/95 backdrop-blur-xl border-r border-slate-200/60 shadow-xl transform transition-transform duration-300 lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
@@ -92,11 +93,10 @@ export default function DashboardLayout() {
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                    isActive
+                  className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
                       ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/30"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
+                    }`}
                   onClick={() => setIsSidebarOpen(false)}
                 >
                   <item.icon className="w-5 h-5" />
