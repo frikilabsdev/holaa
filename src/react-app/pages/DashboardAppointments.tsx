@@ -482,11 +482,59 @@ export default function DashboardAppointmentsPage() {
                                   </div>
                                 )}
 
-                                {/* Calendar Download */}
                                 {apt.status !== 'cancelled' && (
-                                  <a href={`/api/appointments/${apt.id}/ics`} download className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all mt-2">
+                                  <button
+                                    onClick={() => {
+                                      const formatICSDate = (dateStr: string, timeStr: string) => {
+                                        const [year, month, day] = dateStr.split("-");
+                                        const [hour, minute] = timeStr.split(":");
+                                        return `${year}${month}${day}T${hour}${minute}00`;
+                                      };
+
+                                      // Calculamos hora fin (asumimos 1 hora por defecto si no tenemos duración)
+                                      const startDateTime = formatICSDate(apt.appointment_date, apt.appointment_time);
+                                      const endDate = new Date(`${apt.appointment_date}T${apt.appointment_time}`);
+                                      endDate.setHours(endDate.getHours() + 1);
+
+                                      const endYear = endDate.getFullYear();
+                                      const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
+                                      const endDay = String(endDate.getDate()).padStart(2, '0');
+                                      const endHour = String(endDate.getHours()).padStart(2, '0');
+                                      const endMinute = String(endDate.getMinutes()).padStart(2, '0');
+
+                                      const endDateTime = `${endYear}${endMonth}${endDay}T${endHour}${endMinute}00`;
+
+                                      const icsContent = [
+                                        "BEGIN:VCALENDAR",
+                                        "VERSION:2.0",
+                                        "PRODID:-//Citame.click//App//ES",
+                                        "CALSCALE:GREGORIAN",
+                                        "BEGIN:VEVENT",
+                                        `UID:${apt.id}@citame.click`,
+                                        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z`,
+                                        `DTSTART:${startDateTime}`,
+                                        `DTEND:${endDateTime}`,
+                                        `SUMMARY:${apt.service_title} - ${apt.customer_name}`,
+                                        `DESCRIPTION:Cliente: ${apt.customer_name}\\nTeléfono: ${apt.customer_phone}\\nNota: ${apt.notes || "Sin notas"}`,
+                                        `LOCATION:Mi Negocio`,
+                                        "END:VEVENT",
+                                        "END:VCALENDAR"
+                                      ].join("\r\n");
+
+                                      const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+                                      const url = window.URL.createObjectURL(blob);
+                                      const link = document.createElement("a");
+                                      link.href = url;
+                                      link.setAttribute("download", `cita_${apt.id}.ics`);
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                      window.URL.revokeObjectURL(url);
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all mt-2 cursor-pointer"
+                                  >
                                     <Download className="w-4 h-4" /> Descargar para Calendario sin conexión
-                                  </a>
+                                  </button>
                                 )}
                               </div>
                             </div>
